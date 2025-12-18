@@ -1,0 +1,5 @@
+build/
+lib/
+include/
+src_py/venv
+.vs/
