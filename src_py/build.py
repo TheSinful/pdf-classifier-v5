@@ -6,13 +6,24 @@ from pathlib import Path
 from typing import Any
 from globals import OBJECTS, EXPECTED_CLASSIFY_FUNCTIONS, EXPECTED_EXTRACT_FUNCTIONS
 from cmake import CMAKE_BIN_DIR
+from dataclasses import dataclass
 
-CLASSIFIER_ROOT = Path(__file__).parent.parent 
-CLASSIFIER_INCLUDE_ROOT = CLASSIFIER_ROOT / "include"  
+CLASSIFIER_BUILD_ROOT = Path(__file__).parent.parent / "build" 
+CLASSIFIER_INCLUDE_ROOT = CLASSIFIER_BUILD_ROOT / "include"  
 SHARED_HEADER_PATH = CLASSIFIER_INCLUDE_ROOT / "shared"
 CLASSIFIER_GENERATED_INCLUDE_PATH = CLASSIFIER_INCLUDE_ROOT / "generated"  
 GENERIC_TEMPLATES_PATH = Path(__file__).parent / "templates"
+@dataclass
+class FuncSyntax: 
+    return_type: str 
+    param_types: list[str]
+    
+    def __init__(self, return_type: str, param_types: list[str]): 
+        self.return_type = return_type 
+        self.param_types = param_types
 
+EXPECTED_CLASSIFY_FUNC_SYNTAX = FuncSyntax("void*", ["fz_context*", "fz_document*"])
+EXPECTED_EXTRACT_FUNC_SYNTAX = FuncSyntax("void", ["fz_context*", "fz_document*", "void*"])
 class Builder: 
     build_dir: Path
     user_cmake_lists_path: Path
@@ -167,13 +178,11 @@ KnownObject page_type_from_string(std::string obj) {{
         for func in funcs: 
             print(func)
             
-            for expected_func in EXPECTED_CLASSIFY_FUNCTIONS:
-                if self._validate_classify_func(func, expected_func): 
-                    classify_found += 1
-            
-            for expected_func in EXPECTED_EXTRACT_FUNCTIONS: 
-                if self._validate_extract_func(func, expected_func):             
-                    extract_found += 1
+            if self._validate_classify_func(func): 
+                classify_found += 1
+        
+            if self._validate_extract_func(func):             
+                extract_found += 1
         
         print(f"Found {classify_found} classify, {extract_found} extract")        
         
@@ -181,65 +190,59 @@ KnownObject page_type_from_string(std::string obj) {{
             raise RuntimeError(f"Expected {EXPECTED_CLASSIFY_FUNCTIONS.__len__()} classify functions, but found {classify_found}")
 
         if extract_found != EXPECTED_EXTRACT_FUNCTIONS.__len__(): 
-            raise RuntimeError(f"Expected {EXPECTED_EXTRACT_FUNCTIONS.__len__()} classify functions, but found {extract_found}")
+            raise RuntimeError(f"Expected {EXPECTED_EXTRACT_FUNCTIONS.__len__()} extract functions, but found {extract_found}")
     
-    def _validate_classify_func(self, func: dict[str, Any], expected_func: tuple[str, str, str]) -> bool: 
-        name = func["name"]
-        return_type = func["return_type"]
-        params = func["parameters"]
-
-        if name != expected_func[2]: 
-            # print(f"name wasn't {expected_func[2]}")
-            return False
-        
-        if return_type != "void*": 
-            # print("return type wasn't void*")
-            return False
-        
-        if params.__len__() != 1: 
-            # print("too many params")
-            return False
-        
-        if params[0]["type"] != "const PageContext&": 
-            # print("first type didnt match context type")
-            return False
-        
-        return True 
+    def _validate_classify_func(self, func: dict[str, Any]) -> bool:         
+        return self._validate_func(func, EXPECTED_CLASSIFY_FUNCTIONS, EXPECTED_CLASSIFY_FUNC_SYNTAX)
     
-    def _validate_extract_func(self, func: dict[str, Any], expected_func: tuple[str, str, str]) -> bool: 
-        name = func["name"]
-        return_type = func["return_type"]
-        params = func["parameters"]
-
-        if name != expected_func[2]:  
-            # print("name didnt match expected")
-            return False
-        
-        if return_type != "void":
-            # print("return type wasn't void") 
-            return False 
-        
-        if params.__len__() != 2: 
-            # print("param count didnt match")
-            return False
-        
-        if params[0]["type"] != "const PageContext&": 
-            # print("first type didnt match context type")
-            return False
-        
-        if params[1]["type"] != "void*": 
-            # print("second arg type wasn't void*")
-            return False
-        
-        return True 
+    def _validate_extract_func(self, func: dict[str, Any]) -> bool: 
+        return self._validate_func(func, EXPECTED_EXTRACT_FUNCTIONS, EXPECTED_EXTRACT_FUNC_SYNTAX)
                  
+    def _validate_func(self, func: dict[str, Any], extracted: list[tuple[str, str, str]], 
+                       expected_func_syntax: FuncSyntax) -> bool: 
+        given_name: str = func["name"]
+        given_return_type: str = func["return_type"]
+        given_params: list[dict[str, str]] = func["parameters"]
+
+        for extracted_func in extracted: 
+            extracted_name = extracted_func[2]
+
+            if given_name != extracted_name: 
+                # print(f"name wasn't {expected_func[2]}")
+                return False
+            
+            if given_return_type != expected_func_syntax.return_type: 
+                # print("return type wasn't void*")
+                return False
+            
+            if given_params.__len__() != expected_func_syntax.param_types.__len__(): 
+                # print("too many params")
+                return False
+            
+            if not self._validate_func_param_types(["fz_context*", "fz_document*"], given_params): 
+                return False 
+            
+            return True 
+        
+        return False 
+    
+    #                                                   # type                          # name type 
+    def _validate_func_param_types(self, expected_types: list[str], given_params: list[dict[str, str]]) -> bool: 
+        for expected_type, given_param in zip(expected_types, given_params): 
+            given_type: str = given_param["type"] 
+            
+            if expected_type != given_type:
+                return False 
+        
+        return True                
+    
     def _build_user_project(self) -> None: 
         global CMAKE_BIN_DIR
         
         self.user_build_args["BUILD_SHARED_LIBS"] = "OFF"
         self.user_build_args["CLASSIFIER_INCLUDE_DIR"] = str(SHARED_HEADER_PATH)
-        self.user_build_args["mupdf_DIR"] = CLASSIFIER_ROOT / "lib" / "cmake" / "mupdf"
-        self.user_build_args["CMAKE_INSTALL_PREFIX"] = str(CLASSIFIER_ROOT)
+        self.user_build_args["mupdf_DIR"] = CLASSIFIER_BUILD_ROOT / "lib" / "cmake" / "mupdf"
+        self.user_build_args["CMAKE_INSTALL_PREFIX"] = str(CLASSIFIER_BUILD_ROOT)
         self.build_dir.mkdir(exist_ok=True, parents=True)
         
         # configuration
@@ -274,27 +277,43 @@ KnownObject page_type_from_string(std::string obj) {{
 
         all_expected_funcs = EXPECTED_CLASSIFY_FUNCTIONS + EXPECTED_EXTRACT_FUNCTIONS
         
-        func_entries = "\n    ".join(
-            f'{{ "{func[0]}", "{func[1]}", "{func[2]}" }},'
-            for func in all_expected_funcs
-        )        
+        classify_func_entries = "\n    ".join(
+            f'{{ "{func[1]}",  &{func[2]}}},'
+            for func in EXPECTED_CLASSIFY_FUNCTIONS
+        )
+         
+        extract_func_entries = "\n    ".join(
+            f'{{ "{func[1]}",  &{func[2]}}},'
+            for func in EXPECTED_EXTRACT_FUNCTIONS
+        )
+                
+        include_files = "\n".join(
+            f'#include <generated/{func}>'
+            for func in set(func[0] for func in all_expected_funcs)
+        )
 
         data: str = f"""
 #pragma once
 
 #include <string>
 #include <vector> 
+{include_files}
+
+using func_ptr = void(*)(void);
 
 struct Func
 {{
-    std::string file_name;
     std::string obj_name;
-    std::string func_name;
+    func_ptr ptr; 
 }};
 
-static const std::vector<Func> FuncMap = {{
-    {func_entries}
-}}
+static const std::vector<Func> ClassifyFuncMap = {{
+    {classify_func_entries}
+}};
+
+static const std::vector<Func> ExtractFuncMap = {{
+    {extract_func_entries}
+}};
 """
 
         map_header = SHARED_HEADER_PATH / "func_map.h" 
@@ -327,17 +346,20 @@ include({str(mupdf_cmake).replace("\\", "/")})
             f.write(cmake_content)
         
         # Configure
+        print('config')
         config_cmd = [
             os.path.join(CMAKE_BIN_DIR, "cmake"),
-            f"-DCMAKE_INSTALL_PREFIX={str(CLASSIFIER_ROOT)}",
+            f"-DCMAKE_INSTALL_PREFIX={str(CLASSIFIER_BUILD_ROOT)}",
             str(build_dir)
         ]
         subprocess.run(config_cmd, cwd=str(build_dir), check=True)
         
         # Build
+        print('build')
         build_cmd = [os.path.join(CMAKE_BIN_DIR, "cmake"), "--build", str(build_dir), "--config Release"]
         subprocess.run(build_cmd, check=True)
         
+        print('installing')
         # Install
         install_cmd = [os.path.join(CMAKE_BIN_DIR, "cmake"), "--install", str(build_dir)]
         subprocess.run(install_cmd, check=True)
@@ -346,7 +368,7 @@ include({str(mupdf_cmake).replace("\\", "/")})
         
     def _create_mupdf_config(self) -> None:
         """Create mupdfConfig.cmake for find_package() support"""
-        cmake_dir = CLASSIFIER_ROOT / "lib" / "cmake" / "mupdf"
+        cmake_dir = CLASSIFIER_BUILD_ROOT / "lib" / "cmake" / "mupdf"
         cmake_dir.mkdir(exist_ok=True, parents=True)
         
         config_content = """
@@ -374,4 +396,6 @@ set(mupdf_FOUND TRUE)
         config_file = cmake_dir / "mupdfConfig.cmake"
         with open(config_file, "w") as f:
             f.write(config_content)
+        
+        print(f"wrote mupdfConfig.cmake to {config_file}")
         

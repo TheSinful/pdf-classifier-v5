@@ -79,7 +79,13 @@ def def_obj(name: str, classify: ObjectFunc,
     
     assert _classify_func_name != "", "Expected a classify function name."
     assert _extract_func_name != "", "Expected an extraction function name." 
+
+    if not any(_classify_func_name == value for _, _, value in EXPECTED_CLASSIFY_FUNCTIONS): 
+        EXPECTED_CLASSIFY_FUNCTIONS.append((extract.file, name, _classify_func_name))
         
+    if not any(_extract_func_name == value for _, _, value in EXPECTED_EXTRACT_FUNCTIONS): 
+        EXPECTED_EXTRACT_FUNCTIONS.append((classify.file, name, _extract_func_name))
+            
     obj = Object(name, _classify_func_name, _extract_func_name)
     
     if parent is not None:
@@ -90,8 +96,7 @@ def def_obj(name: str, classify: ObjectFunc,
         deref.children.append(ref(obj))
 
     OBJECTS.append(obj)
-    EXPECTED_EXTRACT_FUNCTIONS.append((classify.file, name, _extract_func_name))
-    EXPECTED_CLASSIFY_FUNCTIONS.append((extract.file, name, _classify_func_name))
+    
     
     return ref(obj) 
     

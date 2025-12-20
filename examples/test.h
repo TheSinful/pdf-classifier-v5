@@ -1,7 +1,7 @@
 #pragma once
 
 #include <any>
-#include <context.h>
+#include <mupdf/fitz.h>
 
-void* classify(const PageContext& ctx);
-void extract(const PageContext& ctx, void* shared);
+void* classify(fz_context* ctx, fz_document* doc);
+void extract(fz_context* ctx, fz_document* doc, void* shared);

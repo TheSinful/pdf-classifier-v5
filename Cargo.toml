@@ -1,0 +1,11 @@
+[package]
+name = "pdf_classifier"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+cxx = "1.0.192"
+
+[build-dependencies]
+cxx-build = "1.0.192"
+cmake = "0.1.57"

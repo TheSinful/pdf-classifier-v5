@@ -6,8 +6,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src_py"))
 from build import Builder 
 from object import *
 
-classify = ObjectFunc("objects.h", "obj", "classify")
-extract = ObjectFunc("objects.h", "obj", "extract")
+classify = ObjectFunc("test.h", "obj", "classify")
+extract = ObjectFunc("test.h", "obj", "extract")
 
 chapter = def_obj("chapter", classify, extract)
 subchapter = def_obj("subchapter", classify, extract, chapter) 
