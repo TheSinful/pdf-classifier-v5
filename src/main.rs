@@ -1,7 +1,10 @@
+#![allow(unused)]
+
+mod generated;
 mod initializer;
 
 #[cfg(test)]
-mod tests; 
+mod tests;
 
 fn main() {
     println!("Hello, world!");

@@ -24,6 +24,11 @@ struct SharedData
 // typedef void *shared_data; // any
 
 std::unique_ptr<OpaqueCtx> create_new_ctx(size_t mem_limit);
-std::unique_ptr<OpaqueDoc> create_new_doc(const std::string &path, const OpaqueCtx &o_ctx);
-std::unique_ptr<SharedData> call_classify(const OpaqueCtx &o_ctx, const OpaqueDoc &o_doc, const std::string &obj);
-void call_extract(const OpaqueCtx &o_ctx, const OpaqueDoc &o_doc, const SharedData &shared, const std::string &obj);
+
+std::unique_ptr<OpaqueDoc> create_new_doc(const std::unique_ptr<OpaqueCtx> &o_ctx, const std::string &path);
+
+std::unique_ptr<SharedData> call_classify(const std::unique_ptr<OpaqueCtx> &o_ctx,
+                                          const std::unique_ptr<OpaqueDoc> &o_doc, const std::string &obj);
+
+void call_extract(const std::unique_ptr<OpaqueCtx> &o_ctx, const std::unique_ptr<OpaqueDoc> &o_doc,
+                  const std::unique_ptr<SharedData> &shared, const std::string &obj);

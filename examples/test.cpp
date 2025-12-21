@@ -1,8 +1,9 @@
 #include "test.h"
+#include <iostream>
 
 void *classify(fz_context *ctx, fz_document *doc)
 {
-    return 0;
+    return (void *)0x1;
 }
 
 void extract(fz_context *ctx, fz_document *doc, void *shared)

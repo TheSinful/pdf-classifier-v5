@@ -47,19 +47,21 @@ class Object:
             
             ser_children.append(deref.__serialize_to_cpp_str__(visited))
                 
-        pair_str = "std::nullopt"
+        pair_str = "None"
         if self.pair is not None:
             pair_obj = self.pair[0]()
             if pair_obj is not None:
-                pair_str = f"\"{pair_obj.name}\""
+                pair_str = f"Some(\"{pair_obj.name}\")"
+        
+        children: str = ", ".join(child.strip() for child in ser_children)
         
         return f"""
-{{
-    "{self.name}",
-    {{{", ".join(child.replace("\n", "").replace("\'", "").replace("\\", "").replace("", "") for child in ser_children)}}},
-    {pair_str}
+Node {{
+    name: "{self.name}",
+    children: &[{children}],
+    pair: {pair_str}
 }}
-"""
+""".strip()
 
 @dataclass
 class ObjectFunc: 
@@ -80,11 +82,8 @@ def def_obj(name: str, classify: ObjectFunc,
     assert _classify_func_name != "", "Expected a classify function name."
     assert _extract_func_name != "", "Expected an extraction function name." 
 
-    if not any(_classify_func_name == value for _, _, value in EXPECTED_CLASSIFY_FUNCTIONS): 
-        EXPECTED_CLASSIFY_FUNCTIONS.append((extract.file, name, _classify_func_name))
-        
-    if not any(_extract_func_name == value for _, _, value in EXPECTED_EXTRACT_FUNCTIONS): 
-        EXPECTED_EXTRACT_FUNCTIONS.append((classify.file, name, _extract_func_name))
+    EXPECTED_CLASSIFY_FUNCTIONS.append((extract.file, name, _classify_func_name))    
+    EXPECTED_EXTRACT_FUNCTIONS.append((classify.file, name, _extract_func_name))
             
     obj = Object(name, _classify_func_name, _extract_func_name)
     
