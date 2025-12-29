@@ -1,7 +1,7 @@
 use std::env;
 
 fn main() {
-    cxx_build::bridges(&["src/initializer.rs"])
+    cxx_build::bridges(&["src/ffi.rs"])
         .flag_if_supported("/std:c++20")
         .file("src_cpp/initializer.cpp")
         .include("./src_cpp")
@@ -22,5 +22,4 @@ fn main() {
     println!("cargo:rustc-link-lib=static=classifier_intermediary");
     println!("cargo:rerun-if-changed=src_cpp/initializer.cpp");
     println!("cargo:rerun-if-changed=CMakeLists.txt");
-    
 }

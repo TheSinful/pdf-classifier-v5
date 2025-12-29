@@ -82,8 +82,8 @@ def def_obj(name: str, classify: ObjectFunc,
     assert _classify_func_name != "", "Expected a classify function name."
     assert _extract_func_name != "", "Expected an extraction function name." 
 
-    EXPECTED_CLASSIFY_FUNCTIONS.append((extract.file, name, _classify_func_name))    
-    EXPECTED_EXTRACT_FUNCTIONS.append((classify.file, name, _extract_func_name))
+    EXPECTED_CLASSIFY_FUNCTIONS.append((classify.file, name, _classify_func_name))    
+    EXPECTED_EXTRACT_FUNCTIONS.append((extract.file, name, _extract_func_name))
             
     obj = Object(name, _classify_func_name, _extract_func_name)
     

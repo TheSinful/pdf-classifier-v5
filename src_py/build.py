@@ -23,8 +23,8 @@ class FuncSyntax:
         self.return_type = return_type 
         self.param_types = param_types
 
-EXPECTED_CLASSIFY_FUNC_SYNTAX = FuncSyntax("void*", ["fz_context*", "fz_document*"])
-EXPECTED_EXTRACT_FUNC_SYNTAX = FuncSyntax("void", ["fz_context*", "fz_document*", "void*"])
+EXPECTED_CLASSIFY_FUNC_SYNTAX = FuncSyntax("Result*", ["fz_context*", "fz_document*"])
+EXPECTED_EXTRACT_FUNC_SYNTAX = FuncSyntax("Result*", ["fz_context*", "fz_document*", "void*"])
 class Builder: 
     build_dir: Path
     user_cmake_lists_path: Path
@@ -45,6 +45,7 @@ class Builder:
         self._serialize_object_names_into_enum_rs_module()
         self._serialize_object_names_into_enum_header()
         self._serialize_object_hierarchy_into_rs_module()
+        self._serialize_result_header()
         self._validate_expected_funcs_exist() 
         self._copy_generic_headers()
         self._generate_map_header()
@@ -86,6 +87,47 @@ pub const OBJECTS: [Node; 1] = [
 """
         with open(module_path, "w") as f: 
             f.write(data)
+    
+    def _serialize_result_header(self) -> None: 
+        path = SHARED_HEADER_PATH / "result.h"
+        data = """
+#pragma once 
+#include <string>
+
+struct Result
+{
+private:
+    Result(void *p, void (*d)(void *))
+    {
+        this->type = OK;
+        this->payload = p;
+        this->deleter = d;
+    }
+    Result(std::string s)
+    {
+        this->type = FAIL;
+        this->fail_rsn = std::move(s);
+    }
+
+public:
+    enum Type
+    {
+        OK,
+        FAIL
+    } type;
+    void *payload;
+    std::string fail_rsn;
+    void (*deleter)(void *);
+    Result(const Result &) = delete;
+    Result &operator=(const Result &) = delete;
+    Result(Result &&) = delete;
+    Result &operator=(Result &&) = delete;
+    static Result *ok(void *p, void (*d)(void *)) { return new Result(p, d); }
+    static Result *fail(std::string s) { return new Result(s); }
+};
+"""
+        with open(path, "w") as f: 
+            f.write(data); 
     
     def _serialize_object_names_into_enum_rs_module(self) -> None: 
         module_path = GENERATED_RS_MODULE_PATH / "generated_object_types.rs"
@@ -249,35 +291,36 @@ impl From<&str> for KnownObject {{
     def _validate_extract_func(self, func: dict[str, Any]) -> bool: 
         return self._validate_func(func, EXPECTED_EXTRACT_FUNCTIONS, EXPECTED_EXTRACT_FUNC_SYNTAX)
                  
-    def _validate_func(self, func: dict[str, Any], extracted: list[tuple[str, str, str]], 
+    def _validate_func(self, func: dict[str, Any], expected_list: list[tuple[str, str, str]], 
                        expected_func_syntax: FuncSyntax) -> bool: 
         given_name: str = func["name"]
         given_return_type: str = func["return_type"]
         given_params: list[dict[str, str]] = func["parameters"]
 
-        for extracted_func in extracted: 
-            extracted_name = extracted_func[2]
+        for expected_func in expected_list: 
+            extracted_name = expected_func[2]
 
             if given_name != extracted_name: 
-                # print(f"name wasn't {expected_func[2]}")
+                print(f"name wasn't {expected_func[2]}")
                 continue
             
             if given_return_type != expected_func_syntax.return_type: 
-                # print("return type wasn't void*")
+                print(f"return type wasn't Result*")
                 continue
             
             if given_params.__len__() != expected_func_syntax.param_types.__len__(): 
-                # print("too many params")
+                print("too many params")
                 continue
             
             if not self._validate_func_param_types(["fz_context*", "fz_document*"], given_params): 
+                print("Func param types were incorrect")
                 continue 
             
             return True 
         
         return False 
     
-    #                                                   # type                          # name type 
+    #                                                     # type                          # name type 
     def _validate_func_param_types(self, expected_types: list[str], given_params: list[dict[str, str]]) -> bool: 
         for expected_type, given_param in zip(expected_types, given_params): 
             given_type: str = given_param["type"] 

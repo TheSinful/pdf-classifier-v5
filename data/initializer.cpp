@@ -88,7 +88,7 @@ std::unique_ptr<OpaqueResult> call_classify(const std::unique_ptr<OpaqueCtx> &o_
         typedef Result *(*classify_func)(fz_context *, fz_document *);
         classify_func fn = reinterpret_cast<classify_func>(ptr);
         Result *res = fn(ctx, doc);
-
+        
         if (!res)
         {
             throw std::runtime_error("classify returned null for " + obj);
@@ -163,7 +163,7 @@ void drop_result(const std::unique_ptr<OpaqueResult> &r) noexcept
         return;
 
     Result *inner = reinterpret_cast<Result *>(r->ptr);
-    if (inner->type == Result::Type::OK && inner->deleter)
+    if (inner->type == Result::Type::OK)
     {
         inner->deleter(inner->payload);
     }
@@ -183,7 +183,7 @@ std::unique_ptr<SharedData> extract_shared_payload(const std::unique_ptr<OpaqueR
     return std::make_unique<SharedData>(inner->payload);
 }
 
-const std::string &extract_error_result(const std::unique_ptr<OpaqueResult> &r)
+const std::string& extract_error_result(const std::unique_ptr<OpaqueResult> &r)
 {
     Result *inner = reinterpret_cast<Result *>(r->ptr);
     if (inner->type != Result::FAIL)
