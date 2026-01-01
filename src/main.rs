@@ -48,6 +48,7 @@ mod threading;
 #[cfg(test)]
 mod tests;
 mod classifier;
+mod page; 
 
 fn main() {
     println!("Hello, world!");

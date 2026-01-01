@@ -1,7 +1,3 @@
-trait WeightInference {
-    fn infer(&self)
-}
-
 /// Weightings for structural changes
 /// Where N represents the current prediction
 #[allow(non_snake_case)]
