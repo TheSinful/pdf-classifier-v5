@@ -4,6 +4,7 @@ use crate::ffi::*;
 use crate::generated::generated_object_types::KnownObject;
 use std::path::PathBuf;
 
+
 #[test]
 fn create_ctx() {
     let ctx = unsafe { Context::new(STANDARD_CTX_MEM_LIMIT) };
@@ -22,7 +23,7 @@ fn test_classify_call() {
     let call = unsafe { classify(&ctx, &doc, KnownObject::CHAPTER) };
     match &call {
         UserResult::Ok(ok) => assert!(!ok.is_null()),
-        UserResult::Fail(fail) => panic!("Shouldn't have failed!"),
+        UserResult::Fail(_) => panic!("Shouldn't have failed!"),
     }
 }
 
@@ -45,6 +46,6 @@ fn test_extract_call() {
                 extract(&ctx, &doc, &shared, KnownObject::CHAPTER)
             };
         }
-        UserResult::Fail(fail) => panic!("Shouldn't have failed!"),
+        UserResult::Fail(_) => panic!("Shouldn't have failed!"),
     }
 }

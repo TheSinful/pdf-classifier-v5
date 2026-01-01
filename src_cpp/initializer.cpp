@@ -193,3 +193,9 @@ const std::string &extract_error_result(const std::unique_ptr<OpaqueResult> &r)
 
     return inner->fail_rsn;
 }
+
+int get_result_status(const std::unique_ptr<OpaqueResult> &r) noexcept
+{
+    Result *inner = reinterpret_cast<Result *>(r->ptr);
+    return static_cast<int>(inner->type);
+}

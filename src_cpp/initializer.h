@@ -23,9 +23,8 @@ struct SharedData
 struct OpaqueResult
 {
     void *ptr; // Result*
-    ~OpaqueResult() = default; 
+    ~OpaqueResult() = default;
 };
-
 
 std::unique_ptr<OpaqueCtx> create_new_ctx(size_t mem_limit);
 
@@ -37,8 +36,10 @@ inline fz_document *cast_opaque_doc(const std::unique_ptr<OpaqueDoc> &o_doc);
 void drop_ctx(const std::unique_ptr<OpaqueCtx> &o_ctx) noexcept;
 void drop_doc(const std::unique_ptr<OpaqueCtx> &o_ctx, const std::unique_ptr<OpaqueDoc> &o_doc) noexcept;
 void drop_result(const std::unique_ptr<OpaqueResult> &r) noexcept;
-std::unique_ptr<SharedData> extract_shared_payload(const std::unique_ptr<OpaqueResult>& r);
-const std::string& extract_error_result(const std::unique_ptr<OpaqueResult>& r); 
+
+std::unique_ptr<SharedData> extract_shared_payload(const std::unique_ptr<OpaqueResult> &r);
+const std::string &extract_error_result(const std::unique_ptr<OpaqueResult> &r);
+int get_result_status(const std::unique_ptr<OpaqueResult> &r) noexcept;
 
 std::unique_ptr<OpaqueResult> call_classify(const std::unique_ptr<OpaqueCtx> &o_ctx,
                                             const std::unique_ptr<OpaqueDoc> &o_doc, const std::string &obj);

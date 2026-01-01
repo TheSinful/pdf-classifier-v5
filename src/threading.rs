@@ -1,12 +1,10 @@
+#![allow(dead_code)]
+
 use crate::{
-    ffi::{self, UserResult},
+    ffi::{self, ExtractResult, UserResult},
     generated::generated_object_types::KnownObject,
 };
-use cxx::Exception;
-use std::{
-    path::PathBuf,
-    thread::{self, Builder, JoinHandle},
-};
+use std::{path::PathBuf, thread};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::oneshot as tokio_oneshot;
 
@@ -17,11 +15,10 @@ pub const CHANNEL_BUFFER_SIZE: usize = 50;
 /// Currently just returns a Result<Shared, ()> because we don't return any information of failure
 /// Later, this should be like: Result<Shared, String> where String is the failure reason
 type ClassificationJobResponder = tokio_oneshot::Sender<ClassificationResult>;
-type ExtractionJobResponder = tokio_oneshot::Sender<ExtractionResult>;
+type ExtractionJobResponder = tokio_oneshot::Sender<ExtractResult>;
 type ClassificationResult = UserResult<ffi::Shared>;
-type ExtractionResult = Result<UserResult<()>, Exception>; // payload is irrelevent
 
-enum WorkerJob {
+pub enum WorkerJob {
     Classify {
         ident: KnownObject,
         responder: ClassificationJobResponder,
@@ -33,27 +30,34 @@ enum WorkerJob {
     },
 }
 
-struct WorkerThread {
+pub struct WorkerThread {
     sender: Sender<WorkerJob>,
 }
 
+/// Stored within the actual spawned thread,
 struct WorkerState<'a> {
-    pub ctx: &'a ffi::fz_context,
-    pub doc: ffi::fz_document<'a>,
+    pub ctx: &'a ffi::Context,
+    pub doc: ffi::Document<'a>,
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum ThreadError {
+    #[error("Failed to send job to thread!")]
+    SendError(#[from] tokio::sync::mpsc::error::SendError<WorkerJob>),
 }
 
 impl WorkerThread {
-    pub fn spawn(&self, doc_path: PathBuf) -> Self {
-        let (sender, mut receiver) = tokio::sync::mpsc::channel::<WorkerJob>(CHANNEL_BUFFER_SIZE);
+    pub fn spawn(doc_path: PathBuf) -> Self {
+        let (sender, receiver) = tokio::sync::mpsc::channel::<WorkerJob>(CHANNEL_BUFFER_SIZE);
 
         thread::spawn(move || {
-            /// SAFETY: nothing is inherently unsafe about context or document creation as both
-            /// have the lifetiem of the thread that utilizes them.
-            /// this should be later reflected in the actual definition of fz_context and fz_document.
-            /// And since context is declared prior to document, document should always Drop first,
-            /// as fz_drop_document() requires a ctx pointer.
-            let ctx = unsafe { ffi::fz_context::new(ffi::STANDARD_CTX_MEM_LIMIT) };
-            let doc = unsafe { ffi::fz_document::new(doc_path, &ctx) };
+            // SAFETY: nothing is inherently unsafe about context or document creation as both
+            // have the lifetiem of the thread that utilizes them.
+            // this should be later reflected in the actual definition of fz_context and fz_document.
+            // And since context is declared prior to document, document should always Drop first,
+            // as fz_drop_document() requires a ctx pointer.
+            let ctx = unsafe { ffi::Context::new(ffi::STANDARD_CTX_MEM_LIMIT) };
+            let doc = unsafe { ffi::Document::new(doc_path, &ctx) };
             let state = WorkerState { ctx: &ctx, doc };
 
             Self::_loop(state, receiver);
@@ -62,41 +66,49 @@ impl WorkerThread {
         Self { sender }
     }
 
-    pub async fn classify(&self, ident: KnownObject) -> ClassificationResult {
+    pub async fn classify(&self, ident: KnownObject) -> Result<ClassificationResult, ThreadError> {
         let (sender, receiver) = tokio_oneshot::channel::<ClassificationResult>();
 
-        self.sender.send(WorkerJob::Classify {
-            ident,
-            responder: sender,
-        });
+        self.sender
+            .send(WorkerJob::Classify {
+                ident,
+                responder: sender,
+            })
+            .await?;
 
         match receiver.await {
-            Ok(res) => res,
+            Ok(res) => Ok(res),
             Err(_) => panic!("Thread sender was prematurely dropped!"),
         }
     }
 
-    pub async fn extract(&self, ident: KnownObject, shared: ffi::Shared) -> ExtractionResult {
-        let (sender, receiver) = tokio_oneshot::channel::<ExtractionResult>();
+    pub async fn extract(
+        &self,
+        ident: KnownObject,
+        shared: ffi::Shared,
+    ) -> Result<ExtractResult, ThreadError> {
+        let (sender, receiver) = tokio_oneshot::channel::<ExtractResult>();
 
-        self.sender.send(WorkerJob::Extract {
-            ident,
-            shared,
-            responder: sender,
-        });
+        self.sender
+            .send(WorkerJob::Extract {
+                ident,
+                shared,
+                responder: sender,
+            })
+            .await?;
 
         match receiver.await {
-            Ok(res) => res,
-            Err(_) => panic!("Thread sender was prematurely dropped!"),
+            Ok(res) => Ok(res),
+            Err(_) => panic!("Thread sender was prematurely dropped!"), // tokio::sync::oneshot::error::RecvError ensures that this is the only error case.
         }
     }
 
     fn _loop(state: WorkerState, mut receiver: Receiver<WorkerJob>) {
         while let Some(job) = receiver.blocking_recv() {
             match job {
-                WorkerJob::Classify { ident, responder } => unsafe {
-                    Self::handle_classify(&state, responder, ident);
-                },
+                WorkerJob::Classify { ident, responder } => {
+                    Self::handle_classify(&state, responder, ident)
+                }
                 WorkerJob::Extract {
                     ident,
                     shared,
@@ -113,7 +125,12 @@ impl WorkerThread {
     ) -> () {
         let call = unsafe { ffi::classify(&state.ctx, &state.doc, object_ident) };
 
-        responder.send(call);
+        let packet = responder.send(call);
+
+        match packet {
+            Ok(_) => (),
+            Err(_) => panic!("Thread reciever prematurely dropped!"),
+        }
     }
 
     fn handle_extract(
@@ -123,5 +140,12 @@ impl WorkerThread {
         ident: KnownObject,
     ) -> () {
         let call = unsafe { ffi::extract(&state.ctx, &state.doc, &shared, ident) };
+
+        let packet = responder.send(call);
+
+        match packet {
+            Ok(_) => (),
+            Err(_) => panic!("Thread reciever prematurely dropped!"),
+        }
     }
 }

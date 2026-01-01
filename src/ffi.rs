@@ -1,12 +1,21 @@
+#![allow(dead_code)]
+
 use crate::generated::generated_object_types::KnownObject;
-use cxx::{CxxString, UniquePtr, let_cxx_string};
-use std::borrow::Cow;
+use cxx::{UniquePtr, let_cxx_string};
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::path::PathBuf;
 
 /// 256MiB, standard for PyMuPDF and other bindings
 pub const STANDARD_CTX_MEM_LIMIT: usize = 256 << 20;
+
+/// Currently, there is no implementation to pass extracted data from the C++ side (via [extract]).
+/// Into anywhere else, my current thought process behind it is to instead pass it to Python
+/// into some form of a key-table structure (i.e JSON), but I may also just simply write that data into
+/// A file and deal with it there.
+/// Although, most likely this will incorporate some dynamic form of data that can be configured
+/// To appeal to the dynamic aspect of this project.  
+pub type ExtractResult = UserResult<()>;
 
 #[cxx::bridge]
 #[allow(unused)]
@@ -41,6 +50,7 @@ mod bridge {
 
         fn extract_shared_payload(r: &UniquePtr<OpaqueResult>) -> Result<UniquePtr<SharedData>>;
         fn extract_error_result(r: &UniquePtr<OpaqueResult>) -> Result<&CxxString>;
+        fn get_result_status(r: &UniquePtr<OpaqueResult>) -> i32;
 
         fn drop_ctx(o_ctx: &UniquePtr<OpaqueCtx>) -> ();
         fn drop_doc(o_ctx: &UniquePtr<OpaqueCtx>, o_doc: &UniquePtr<OpaqueDoc>) -> ();
@@ -63,8 +73,15 @@ pub enum UserResult<T> {
     Fail(FailUserResult),
 }
 
+/// SAFETY:
+/// UserResult is meant to be sent from one thread to another, BUT not shared between threads
+/// For example:
+///     Worker runs classify
+///     Worker **sends** UserResult back to mainthread for evaluation (from classify call)
+///     Main thread now has ownership
+///
+/// UserResult is meant to not be synced between threads while its purpose is that example
 unsafe impl<T> Send for UserResult<T> {}
-unsafe impl<T> Sync for UserResult<T> {}
 
 impl<T> Drop for UserResult<T> {
     fn drop(&mut self) {
@@ -72,12 +89,10 @@ impl<T> Drop for UserResult<T> {
         // For example, if created in classify the Rust layer is returned said result
         // Therefore, Rust holds the ownership of UserResult aslong as users don't hold
         // unexpected pointers/references to UserResult
-        unsafe {
-            match self {
-                Self::Ok(inner) => bridge::drop_result(&inner.inner),
-                Self::Fail(inner) => bridge::drop_result(&inner.inner),
-            }
-        };
+        match self {
+            Self::Ok(inner) => bridge::drop_result(&inner.inner),
+            Self::Fail(inner) => bridge::drop_result(&inner.inner),
+        }
     }
 }
 
@@ -91,11 +106,9 @@ impl<T> Deref for OkUserResult<T> {
 
 impl<T> OkUserResult<T> {
     pub fn extract_payload_as_shared(&self) -> Shared {
-        unsafe {
-            let raw_shared = bridge::extract_shared_payload(&self)
-                .expect("Attempted to access payload on a FAIL result.");
-            Shared(raw_shared)
-        }
+        let raw_shared = bridge::extract_shared_payload(&self)
+            .expect("Attempted to access payload on a FAIL result.");
+        Shared(raw_shared)
     }
 }
 
@@ -139,9 +152,7 @@ pub struct Document<'ctx> {
 
 impl<'ctx> Drop for Document<'ctx> {
     fn drop(&mut self) {
-        // SAFETY: nothing unsafe here, the only unsafe aspect could be
-        // if Context is dropped prior to self.drop, but the reference to ctx should evade that.
-        unsafe { bridge::drop_doc(self._ctx, &self.inner) };
+        bridge::drop_doc(self._ctx, &self.inner);
     }
 }
 
@@ -173,7 +184,6 @@ pub struct Shared(pub UniquePtr<bridge::SharedData>);
 ///     being the call to [extract] for said object
 ///     where then it would then be dropped
 unsafe impl Send for Shared {}
-unsafe impl Sync for Shared {}
 
 impl Deref for Shared {
     type Target = UniquePtr<bridge::SharedData>;
@@ -194,18 +204,42 @@ pub unsafe fn classify(ctx: &Context, doc: &Document, ident: KnownObject) -> Use
         "Failed to call classify! returned null data!"
     );
 
-    UserResult::Ok(OkUserResult {
-        inner: call,
-        _data: PhantomData::default(),
-    })
+    let status = bridge::get_result_status(&call);
+
+    if status == 0 {
+        UserResult::Ok(OkUserResult {
+            inner: call,
+            _data: PhantomData::default(),
+        })
+    } else {
+        UserResult::Fail(FailUserResult { inner: call })
+    }
 }
 
-pub unsafe fn extract(ctx: &Context, doc: &Document, shared: &Shared, ident: KnownObject) -> () {
+pub unsafe fn extract(
+    ctx: &Context,
+    doc: &Document,
+    shared: &Shared,
+    ident: KnownObject,
+) -> ExtractResult /* placeholder */ {
     let_cxx_string!(ident_to_cxx_str = ident.to_string());
 
-    bridge::call_extract(ctx, doc, shared, &ident_to_cxx_str)
+    let call = bridge::call_extract(ctx, doc, shared, &ident_to_cxx_str)
         .unwrap_or_else(|e| panic!("Failed to call extract! (from intermediary: {})", e.what()));
-}
 
-pub use Context as fz_context;
-pub use Document as fz_document;
+    assert!(
+        !call.is_null(),
+        "Failed to call extract! returned null data!"
+    );
+
+    let status = bridge::get_result_status(&call);
+
+    if status == 0 {
+        UserResult::Ok(OkUserResult {
+            inner: call,
+            _data: PhantomData::default(),
+        })
+    } else {
+        UserResult::Fail(FailUserResult { inner: call })
+    }
+}

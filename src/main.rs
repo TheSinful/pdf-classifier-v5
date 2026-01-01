@@ -1,4 +1,4 @@
-#![allow(unused)]
+// #![allow(unused)]
 
 //!
 //! Instead of sequentially classifying pages one-by-one, this classifier uses **speculative
@@ -47,6 +47,7 @@ mod generated;
 mod threading; 
 #[cfg(test)]
 mod tests;
+mod classifier;
 
 fn main() {
     println!("Hello, world!");
