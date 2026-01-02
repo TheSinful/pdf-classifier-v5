@@ -1,7 +1,8 @@
 pub mod structural;
 
-use std::ops::{Add, Deref};
+use std::ops::{Add, Deref, Sub};
 
+#[derive(Clone, Copy, Default, PartialEq)]
 struct Weight(pub f32);
 
 impl Deref for Weight {
@@ -20,4 +21,10 @@ impl Add for Weight {
     }
 }
 
+impl Sub for Weight {
+    type Output = Weight;
 
+    fn sub(self, rhs: Self) -> Self::Output {
+        Weight(self.0 - rhs.0)
+    }
+}

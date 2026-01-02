@@ -2,6 +2,7 @@ mod context;
 mod defer;
 mod unknown;
 mod weights;
+mod constraints;
 
 use crate::page::Page;
 use crate::{classifier::defer::DeferBlock, generated::generated_object_types::KnownObject};

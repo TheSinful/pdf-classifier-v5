@@ -57,7 +57,7 @@ class Object:
         
         return f"""
 Node {{
-    name: "{self.name}",
+    name: KnownObject::{self.name.upper()},
     children: &[{children}],
     pair: {pair_str}
 }}

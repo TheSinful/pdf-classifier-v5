@@ -2,17 +2,17 @@
 /// Where N represents the current prediction
 #[allow(non_snake_case)]
 pub struct StructuralWeights {
-    /// N is not child to the current parent we are within
-    /// This should be a penalty instead of a reward since many objects
-    /// could be children to a parent, but we just need to filter out
-    /// what cannot be structurally sound.
-    pub PENALTY_not_natural_child: f32,
-    /// N breaks the parent-child relation too quickly
-    /// I.e, subchapter -> subchapter (we missed children of subchapter)
-    pub PENALTY_skipped_children: f32,
-    /// N completes **A PAIR** but not the current pair
-    /// initiated by a new_pair   
-    pub PENALTY_invalid_pair: f32,
+    // /// N is not child to the current parent we are within
+    // /// This should be a penalty instead of a reward since many objects
+    // /// could be children to a parent, but we just need to filter out
+    // /// what cannot be structurally sound.
+    // // pub PENALTY_not_natural_child: f32,
+    // /// N breaks the parent-child relation too quickly
+    // /// I.e, subchapter -> subchapter (we missed children of subchapter)
+    // // pub PENALTY_skipped_children: f32,
+    // /// N completes **A PAIR** but not the current pair
+    // /// initiated by a new_pair   
+    // pub PENALTY_invalid_pair: f32,
     /// N is of an object that starts a new pair
     pub REWARD_new_pair: f32,
     /// N ends an expected pair
