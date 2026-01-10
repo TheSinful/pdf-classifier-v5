@@ -1,4 +1,6 @@
 /// Wrapper struct to state T will exist at some point, just doesn't exist yet
+/// 
+/// Identical to an Option, but promises T will be Some eventually. 
 #[derive(Clone, Copy)]
 pub struct Unknown<T> {
     inner: Option<T>,

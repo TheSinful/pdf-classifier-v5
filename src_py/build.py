@@ -26,8 +26,8 @@ class FuncSyntax:
         self.return_type = return_type 
         self.param_types = param_types
 
-EXPECTED_CLASSIFY_FUNC_SYNTAX = FuncSyntax("Result*", ["fz_context*", "fz_document*"])
-EXPECTED_EXTRACT_FUNC_SYNTAX = FuncSyntax("Result*", ["fz_context*", "fz_document*", "void*"])
+EXPECTED_CLASSIFY_FUNC_SYNTAX = FuncSyntax("Result*", ["uint32_t", "fz_context*", "fz_document*"])
+EXPECTED_EXTRACT_FUNC_SYNTAX = FuncSyntax("Result*", ["uint32_t", "fz_context*", "fz_document*", "void*"])
 class Builder: 
     build_dir: Path
     user_cmake_lists_path: Path
@@ -111,22 +111,22 @@ type TableMatrix = [[bool; OBJECT_COUNT]; OBJECT_COUNT];
 {pairs_rows}
 
 #[inline]
-fn idx(o: KnownObject) -> usize {{
+const fn idx(o: KnownObject) -> usize {{
     o as usize
 }}
 
 #[inline]
-pub fn is_child(parent: KnownObject, child: KnownObject) -> bool {{
+pub const fn is_child(parent: KnownObject, child: KnownObject) -> bool {{
     VALID_CHILDREN[idx(parent)][idx(child)]
 }}
 
 #[inline]
-pub fn is_parent(parent: KnownObject, child: KnownObject) -> bool {{
+pub const fn is_parent(parent: KnownObject, child: KnownObject) -> bool {{
     VALID_PARENTS[idx(parent)][idx(child)]
 }}
 
 #[inline]
-pub fn is_pair(o1: KnownObject, o2: KnownObject) -> bool {{
+pub const fn is_pair(o1: KnownObject, o2: KnownObject) -> bool {{
     VALID_PAIRS[idx(o1)][idx(o2)]
 }}
 
@@ -206,6 +206,18 @@ public:
             for obj in OBJECTS
         )
         
+        # Generate is_first_in_pair() implementation
+        is_first_in_pair_cases = "\n            ".join(
+            f'KnownObject::{obj.name.upper()} => {str(hasattr(obj, "pair") and obj.pair is not None and obj.pair[1] == 1).lower()},'
+            for obj in OBJECTS
+        )
+        
+        # Generate is_second_in_pair() implementation
+        is_second_in_pair_cases = "\n            ".join(
+            f'KnownObject::{obj.name.upper()} => {str(hasattr(obj, "pair") and obj.pair is not None and obj.pair[1] == 2).lower()},'
+            for obj in OBJECTS
+        )
+        
         data = f"""
 pub const OBJECT_COUNT: usize = {len(OBJECTS)};
 
@@ -217,16 +229,30 @@ pub enum KnownObject {{
 
 impl KnownObject {{
     #[inline]
-    pub fn has_children(&self) -> bool {{
+    pub const fn has_children(&self) -> bool {{
         match self {{
             {has_children_cases}
         }}
     }}
 
     #[inline]
-    pub fn has_pair(&self) -> bool {{
+    pub const fn has_pair(&self) -> bool {{
         match self {{
             {has_pair_cases}
+        }}
+    }}
+
+    #[inline]
+    pub const fn is_first_in_pair(&self) -> bool {{
+        match self {{
+            {is_first_in_pair_cases}
+        }}
+    }}
+
+    #[inline]
+    pub const fn is_second_in_pair(&self) -> bool {{
+        match self {{
+            {is_second_in_pair_cases}
         }}
     }}
 }}
@@ -381,7 +407,7 @@ impl From<&str> for KnownObject {{
 
         for expected_func in expected_list: 
             extracted_name = expected_func[2]
-
+    
             if given_name != extracted_name: 
                 print(f"name wasn't {expected_func[2]}")
                 continue
@@ -394,7 +420,7 @@ impl From<&str> for KnownObject {{
                 print("too many params")
                 continue
             
-            if not self._validate_func_param_types(["fz_context*", "fz_document*"], given_params): 
+            if not self._validate_func_param_types(["uint32_t", "fz_context*", "fz_document*"], given_params): 
                 print("Func param types were incorrect")
                 continue 
             

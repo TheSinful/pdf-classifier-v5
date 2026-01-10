@@ -1,3 +1,4 @@
+use crate::generated::generated_object_types::KnownObject;
 use crate::threading::*;
 use std::path::PathBuf;
 
@@ -18,8 +19,9 @@ async fn test_bulk_worker_spawn() {
 async fn test_worker_classify_call() {
     let worker = WorkerThread::spawn(get_test_doc_path());
     let result = worker
-        .classify(crate::generated::generated_object_types::KnownObject::CHAPTER)
-        .await; // from examples
+        .classify(KnownObject::CHAPTER, 0u32.into()) // from examples
+        .await;
+
     match result {
         Ok(_) => {}
         Err(e) => panic!("Failed to run classify on thread! {}", e.to_string()),
@@ -42,9 +44,8 @@ async fn test_worker_classify_call() {
 #[tokio::test]
 async fn test_worker_extract_call() {
     let worker = WorkerThread::spawn(get_test_doc_path());
-    let classify_result = worker
-        .classify(crate::generated::generated_object_types::KnownObject::CHAPTER)
-        .await; // from examples
+    let classify_result = worker.classify(KnownObject::CHAPTER, 0u32.into()).await; // from examples
+
     match classify_result {
         Ok(_) => {}
         Err(e) => panic!("Failed to run classify on thread! {}", e.to_string()),
@@ -67,6 +68,7 @@ async fn test_worker_extract_call() {
         .extract(
             crate::generated::generated_object_types::KnownObject::CHAPTER,
             shared,
+            0u32.into(),
         )
         .await;
 

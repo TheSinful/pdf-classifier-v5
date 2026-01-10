@@ -20,7 +20,7 @@ fn test_classify_call() {
     let doc = unsafe { Document::new(PathBuf::from(test_doc_path), &ctx) };
     assert!(!doc.is_null());
 
-    let call = unsafe { classify(&ctx, &doc, KnownObject::CHAPTER) };
+    let call = unsafe { classify(&ctx, &doc, KnownObject::CHAPTER, 0) };
     match &call {
         UserResult::Ok(ok) => assert!(!ok.is_null()),
         UserResult::Fail(_) => panic!("Shouldn't have failed!"),
@@ -36,14 +36,14 @@ fn test_extract_call() {
     let doc = unsafe { Document::new(PathBuf::from(test_doc_path), &ctx) };
     assert!(!doc.is_null());
 
-    let classify = unsafe { classify(&ctx, &doc, KnownObject::CHAPTER) };
+    let classify = unsafe { classify(&ctx, &doc, KnownObject::CHAPTER, 0) };
     match &classify {
         UserResult::Ok(ok) => {
             assert!(!ok.is_null());
 
             unsafe {
                 let shared = ok.extract_payload_as_shared();
-                extract(&ctx, &doc, &shared, KnownObject::CHAPTER)
+                extract(&ctx, &doc, &shared, KnownObject::CHAPTER, 0)
             };
         }
         UserResult::Fail(_) => panic!("Shouldn't have failed!"),

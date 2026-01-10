@@ -15,7 +15,8 @@ pub const STANDARD_CTX_MEM_LIMIT: usize = 256 << 20;
 /// A file and deal with it there.
 /// Although, most likely this will incorporate some dynamic form of data that can be configured
 /// To appeal to the dynamic aspect of this project.  
-pub type ExtractResult = UserResult<()>;
+pub type ExtractionResult = UserResult<()>;
+pub type ClassificationResult = UserResult<Shared>;
 
 #[cxx::bridge]
 #[allow(unused)]
@@ -39,6 +40,7 @@ mod bridge {
             o_ctx: &UniquePtr<OpaqueCtx>,
             o_doc: &UniquePtr<OpaqueDoc>,
             obj: &CxxString,
+            page: u32,
         ) -> Result<UniquePtr<OpaqueResult>>;
 
         fn call_extract(
@@ -46,6 +48,7 @@ mod bridge {
             o_doc: &UniquePtr<OpaqueDoc>,
             shared: &UniquePtr<SharedData>,
             obj: &CxxString,
+            page: u32,
         ) -> Result<UniquePtr<OpaqueResult>>;
 
         fn extract_shared_payload(r: &UniquePtr<OpaqueResult>) -> Result<UniquePtr<SharedData>>;
@@ -193,10 +196,10 @@ impl Deref for Shared {
     }
 }
 
-pub unsafe fn classify(ctx: &Context, doc: &Document, ident: KnownObject) -> UserResult<Shared> {
+pub unsafe fn classify(ctx: &Context, doc: &Document, ident: KnownObject, page: u32) -> ClassificationResult {
     let_cxx_string!(ident_to_cxx_str = ident.to_string());
 
-    let call = bridge::call_classify(ctx, doc, &ident_to_cxx_str)
+    let call = bridge::call_classify(ctx, doc, &ident_to_cxx_str, page)
         .unwrap_or_else(|e| panic!("Failed to call classify! (from intermediary: {})", e.what()));
 
     assert!(
@@ -221,10 +224,11 @@ pub unsafe fn extract(
     doc: &Document,
     shared: &Shared,
     ident: KnownObject,
-) -> ExtractResult /* placeholder */ {
+    page: u32
+) -> ExtractionResult /* placeholder */ {
     let_cxx_string!(ident_to_cxx_str = ident.to_string());
 
-    let call = bridge::call_extract(ctx, doc, shared, &ident_to_cxx_str)
+    let call = bridge::call_extract(ctx, doc, shared, &ident_to_cxx_str, page)
         .unwrap_or_else(|e| panic!("Failed to call extract! (from intermediary: {})", e.what()));
 
     assert!(

@@ -47,3 +47,6 @@ but hard constraints will always hold priority and just go down the list,
 maybe not actually since some will be more "demanding" than others
 i could maybe dynamically sort them? 
 too much work for now 
+
+i'll likely also dynamically assign the weights rather than constants within each constraint
+probably by just generating them via the build system, or by an enviroment variable

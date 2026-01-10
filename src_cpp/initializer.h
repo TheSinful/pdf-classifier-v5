@@ -42,7 +42,7 @@ const std::string &extract_error_result(const std::unique_ptr<OpaqueResult> &r);
 int get_result_status(const std::unique_ptr<OpaqueResult> &r) noexcept;
 
 std::unique_ptr<OpaqueResult> call_classify(const std::unique_ptr<OpaqueCtx> &o_ctx,
-                                            const std::unique_ptr<OpaqueDoc> &o_doc, const std::string &obj);
+                                            const std::unique_ptr<OpaqueDoc> &o_doc, const std::string &obj, uint32_t page);
 
 std::unique_ptr<OpaqueResult> call_extract(const std::unique_ptr<OpaqueCtx> &o_ctx, const std::unique_ptr<OpaqueDoc> &o_doc,
-                                           const std::unique_ptr<SharedData> &shared, const std::string &obj);
+                                           const std::unique_ptr<SharedData> &shared, const std::string &obj, uint32_t page);

@@ -1,8 +1,9 @@
 #![allow(dead_code)]
 
 use crate::{
-    ffi::{self, ExtractResult, UserResult},
+    ffi::{self, ClassificationResult, ExtractionResult},
     generated::generated_object_types::KnownObject,
+    page::Page,
 };
 use std::{path::PathBuf, thread};
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -15,16 +16,17 @@ pub const CHANNEL_BUFFER_SIZE: usize = 50;
 /// Currently just returns a Result<Shared, ()> because we don't return any information of failure
 /// Later, this should be like: Result<Shared, String> where String is the failure reason
 type ClassificationJobResponder = tokio_oneshot::Sender<ClassificationResult>;
-type ExtractionJobResponder = tokio_oneshot::Sender<ExtractResult>;
-type ClassificationResult = UserResult<ffi::Shared>;
+type ExtractionJobResponder = tokio_oneshot::Sender<ExtractionResult>;
 
 pub enum WorkerJob {
     Classify {
         ident: KnownObject,
+        page: Page,
         responder: ClassificationJobResponder,
     },
     Extract {
         ident: KnownObject,
+        page: Page,
         shared: ffi::Shared,
         responder: ExtractionJobResponder,
     },
@@ -66,12 +68,17 @@ impl WorkerThread {
         Self { sender }
     }
 
-    pub async fn classify(&self, ident: KnownObject) -> Result<ClassificationResult, ThreadError> {
+    pub async fn classify(
+        &self,
+        ident: KnownObject,
+        page: Page,
+    ) -> Result<ClassificationResult, ThreadError> {
         let (sender, receiver) = tokio_oneshot::channel::<ClassificationResult>();
 
         self.sender
             .send(WorkerJob::Classify {
                 ident,
+                page,
                 responder: sender,
             })
             .await?;
@@ -86,14 +93,16 @@ impl WorkerThread {
         &self,
         ident: KnownObject,
         shared: ffi::Shared,
-    ) -> Result<ExtractResult, ThreadError> {
-        let (sender, receiver) = tokio_oneshot::channel::<ExtractResult>();
+        page: Page,
+    ) -> Result<ExtractionResult, ThreadError> {
+        let (sender, receiver) = tokio_oneshot::channel::<ExtractionResult>();
 
         self.sender
             .send(WorkerJob::Extract {
                 ident,
                 shared,
                 responder: sender,
+                page,
             })
             .await?;
 
@@ -106,14 +115,17 @@ impl WorkerThread {
     fn _loop(state: WorkerState, mut receiver: Receiver<WorkerJob>) {
         while let Some(job) = receiver.blocking_recv() {
             match job {
-                WorkerJob::Classify { ident, responder } => {
-                    Self::handle_classify(&state, responder, ident)
-                }
+                WorkerJob::Classify {
+                    ident,
+                    responder,
+                    page,
+                } => Self::handle_classify(&state, responder, ident, page),
                 WorkerJob::Extract {
                     ident,
                     shared,
                     responder,
-                } => Self::handle_extract(&state, responder, shared, ident),
+                    page,
+                } => Self::handle_extract(&state, responder, shared, ident, page),
             }
         }
     }
@@ -122,8 +134,9 @@ impl WorkerThread {
         state: &WorkerState,
         responder: ClassificationJobResponder, // sender
         object_ident: KnownObject,
+        page: Page,
     ) -> () {
-        let call = unsafe { ffi::classify(&state.ctx, &state.doc, object_ident) };
+        let call = unsafe { ffi::classify(&state.ctx, &state.doc, object_ident, page.into()) };
 
         let packet = responder.send(call);
 
@@ -138,8 +151,9 @@ impl WorkerThread {
         responder: ExtractionJobResponder,
         shared: ffi::Shared,
         ident: KnownObject,
+        page: Page,
     ) -> () {
-        let call = unsafe { ffi::extract(&state.ctx, &state.doc, &shared, ident) };
+        let call = unsafe { ffi::extract(&state.ctx, &state.doc, &shared, ident, page.into()) };
 
         let packet = responder.send(call);
 

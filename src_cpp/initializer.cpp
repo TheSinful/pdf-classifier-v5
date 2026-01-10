@@ -61,7 +61,7 @@ std::unique_ptr<OpaqueDoc> create_new_doc(const std::unique_ptr<OpaqueCtx> &o_ct
     return std::make_unique<OpaqueDoc>(doc);
 }
 
-std::unique_ptr<OpaqueResult> call_classify(const std::unique_ptr<OpaqueCtx> &o_ctx, const std::unique_ptr<OpaqueDoc> &o_doc, const std::string &obj)
+std::unique_ptr<OpaqueResult> call_classify(const std::unique_ptr<OpaqueCtx> &o_ctx, const std::unique_ptr<OpaqueDoc> &o_doc, const std::string &obj, uint32_t page)
 {
     fz_context *ctx = static_cast<fz_context *>(o_ctx->ptr);
     fz_document *doc = static_cast<fz_document *>(o_doc->ptr);
@@ -85,9 +85,9 @@ std::unique_ptr<OpaqueResult> call_classify(const std::unique_ptr<OpaqueCtx> &o_
     void *ptr = found_func->ptr;
     if (ptr)
     {
-        typedef Result *(*classify_func)(fz_context *, fz_document *);
+        typedef Result *(*classify_func)(uint32_t, fz_context *, fz_document *);
         classify_func fn = reinterpret_cast<classify_func>(ptr);
-        Result *res = fn(ctx, doc);
+        Result *res = fn(page, ctx, doc);
 
         if (!res)
         {
@@ -102,7 +102,7 @@ std::unique_ptr<OpaqueResult> call_classify(const std::unique_ptr<OpaqueCtx> &o_
     }
 }
 
-std::unique_ptr<OpaqueResult> call_extract(const std::unique_ptr<OpaqueCtx> &o_ctx, const std::unique_ptr<OpaqueDoc> &o_doc, const std::unique_ptr<SharedData> &shared, const std::string &obj)
+std::unique_ptr<OpaqueResult> call_extract(const std::unique_ptr<OpaqueCtx> &o_ctx, const std::unique_ptr<OpaqueDoc> &o_doc, const std::unique_ptr<SharedData> &shared, const std::string &obj, uint32_t page)
 {
     fz_context *ctx = static_cast<fz_context *>(o_ctx->ptr);
     fz_document *doc = static_cast<fz_document *>(o_doc->ptr);
@@ -126,9 +126,10 @@ std::unique_ptr<OpaqueResult> call_extract(const std::unique_ptr<OpaqueCtx> &o_c
     void *ptr = found_func->ptr;
     if (ptr)
     {
-        typedef Result *(*extract_func)(fz_context *, fz_document *, void *);
+        typedef Result *(*extract_func)(uint32_t, fz_context *, fz_document *, void *);
+
         extract_func fn = reinterpret_cast<extract_func>(ptr);
-        Result *res = fn(ctx, doc, shared->ptr);
+        Result *res = fn(page, ctx, doc, shared->ptr);
         return std::make_unique<OpaqueResult>(res);
     }
     else
