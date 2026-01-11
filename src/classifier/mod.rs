@@ -2,14 +2,19 @@ mod constraints;
 mod context;
 mod defer;
 mod result_map;
+mod score;
 mod unknown;
 
+use crate::always_some::AlwaysSome;
 use crate::classifier::context::ClassifierContext;
 use crate::classifier::defer::{CompleteDeferBlock, IncompleteDeferBlock};
 use crate::ffi::ClassificationResult;
 use crate::generated::generated_object_types::{KnownObject, OBJECT_COUNT};
 use crate::page::Page;
+use score::Score;
 use std::rc::Rc;
+
+type InferenceArray = [(AlwaysSome<KnownObject>, Score); OBJECT_COUNT];
 
 pub struct Classifier {
     soft_constraints: Vec<constraints::SoftConstraints>,
@@ -60,16 +65,15 @@ impl Classifier {
 
     fn iter_with_non_deferrence(&self, page: Page) -> () {
         let inference = self.infer(page, false);
-        
     }
 
-    fn apply_soft_constraints(&self, class: KnownObject, page: Page) -> f32 {
-        let mut total_score: f32 = 0.0;
+    fn apply_soft_constraints(&self, class: KnownObject, page: Page) -> Score {
+        let mut total_score: Score = 0.0.into();
 
         for soft in &self.soft_constraints {
             let score = soft.eval(&self.context, class, page);
 
-            total_score += score;
+            total_score += score.into();
         }
 
         total_score
@@ -88,9 +92,8 @@ impl Classifier {
         true
     }
 
-    fn infer(&self, page: Page, avoid_soft: bool) -> KnownObject {
-        let mut seen_largest_obj: KnownObject = unsafe { std::mem::transmute(0u8) }; // see safety block below
-        let mut seen_largest_score: f32 = 0.0;
+    fn infer(&self, page: Page, avoid_soft: bool) -> Vec<(Score, KnownObject)> {
+        let mut vec = Vec::<(Score, KnownObject)>::with_capacity(OBJECT_COUNT);
 
         for obj_id in 0..OBJECT_COUNT {
             //  SAFETY:
@@ -99,20 +102,22 @@ impl Classifier {
             //      This therefore mitigates any chance of unnecessary branching
             let class: KnownObject = unsafe { std::mem::transmute(obj_id as u8) };
 
-            if !self.eval_hard_constraints(class) {
-                continue; // we do not give any leniancy to objects who don't meet structural constraints
+            if self.eval_hard_constraints(class) {
+                // arr[obj_id] = (class.into(), 0.0);
+                vec.push((0.0.into(), class));
+            } else {
+                vec.push((Score::NEG_INFINITY(), class.into()));
+                continue;
             }
 
             if !avoid_soft {
-                let score = self.apply_soft_constraints(class, page);
-                if score > seen_largest_score {
-                    seen_largest_score = score;
-                    seen_largest_obj = class;
-                }
+                vec.push((self.apply_soft_constraints(class, page), class.into()));
             }
         }
 
-        seen_largest_obj
+        vec.sort_unstable_by_key(|f| f.0);
+
+        vec
     }
 
     // ! I vaguely remember deference ignoring soft constraints, but
@@ -124,7 +129,7 @@ impl Classifier {
     // /// I assume the maintenence loss makes it worth it
     // fn infer_within_defer(&self, page: Page) -> KnownObject {
     //     let mut seen_largest_obj: KnownObject = unsafe { std::mem::transmute(0u8) }; // see safety block below
-    //     let mut seen_largest_score: f32 = 0.0;
+    //     let mut seen_largest_score: Score = 0.0;
 
     //     for obj_id in 0..OBJECT_COUNT {
     //         //  SAFETY:

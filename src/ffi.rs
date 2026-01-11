@@ -23,7 +23,7 @@ pub type ClassificationResult = UserResult<Shared>;
 mod bridge {
 
     unsafe extern "C++" {
-        include!("initializer.h");
+        include!("initializer.hpp");
 
         type OpaqueCtx;
         type OpaqueDoc;

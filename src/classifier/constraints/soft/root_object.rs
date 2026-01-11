@@ -1,5 +1,6 @@
-use crate::classifier::constraints::soft::{NO_AFFECT, Reward, SoftConstraint};
+use crate::classifier::constraints::soft::{Reward, SoftConstraint};
 use crate::classifier::context::ClassifierContext;
+use crate::classifier::score::Score;
 use crate::generated::generated_object_types::KnownObject;
 use crate::generated::reflected_objects::is_root;
 use crate::page::Page;
@@ -11,11 +12,11 @@ pub struct RootObjectReward;
 impl Reward for RootObjectReward {}
 
 impl SoftConstraint for RootObjectReward {
-    fn eval(ctx: &ClassifierContext, class: KnownObject, page: Page ) -> f32 {
+    fn eval(ctx: &ClassifierContext, class: KnownObject, page: Page ) -> Score {
         if ctx.is_first_page(page) && is_root(class) {
-            IS_ROOT_REWARD
+            IS_ROOT_REWARD.into()
         } else {
-            NO_AFFECT
+            Score::NO_EFFECT()
         }
     }
 }

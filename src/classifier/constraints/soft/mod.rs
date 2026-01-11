@@ -13,6 +13,7 @@ use crate::classifier::constraints::soft::pair_rewards::PairRewards;
 use crate::classifier::constraints::soft::root_object::RootObjectReward;
 use crate::classifier::constraints::soft::skipped_children::SkippedChildrenConstraint;
 use crate::classifier::context::ClassifierContext;
+use crate::classifier::score::Score;
 use crate::generated::generated_object_types::KnownObject;
 use crate::page::Page;
 
@@ -28,17 +29,13 @@ trait Penalty: SoftConstraint {}
 /// self is going to return a positive float.
 trait Reward: SoftConstraint {}
 
-/// When [SoftConstraint]::eval -> 0.0
-/// (doesn't affect any weights)
-const NO_AFFECT: f32 = 0.0;
-
 trait SoftConstraint {
-    fn eval(ctx: &ClassifierContext, class: KnownObject, page: Page) -> f32;
+    fn eval(ctx: &ClassifierContext, class: KnownObject, page: Page) -> Score;
 }
 
 impl_constraint_enum!(
     SoftConstraints,
-    f32,
+    Score,
     REWARD_PairOrder = PairRewards,
     REWARD_RootObject = RootObjectReward,
     PENALTY_SkippedChildren = SkippedChildrenConstraint

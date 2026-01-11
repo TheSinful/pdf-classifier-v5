@@ -49,6 +49,7 @@ mod threading;
 mod tests;
 mod classifier;
 mod page; 
+mod always_some;
 
 fn main() {
     println!("Hello, world!");
