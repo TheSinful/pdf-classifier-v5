@@ -42,7 +42,6 @@
 // ! Maybe utilize a single thread for spawning? So after "cooking" a batch of predictions,
 // ! Send them to the "spawner" thread to handle the spawning, while the main thread continues to predict
 
-mod _classifier; // redo
 mod classifier;
 mod context;
 mod ffi;
