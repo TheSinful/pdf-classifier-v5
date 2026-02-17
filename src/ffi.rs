@@ -23,7 +23,7 @@ pub type ClassificationResult = UserResult<Shared>;
 mod bridge {
 
     unsafe extern "C++" {
-        include!("initializer.hpp");
+        include!("ffi.hpp");
 
         type OpaqueCtx;
         type OpaqueDoc;
@@ -76,6 +76,34 @@ pub enum UserResult<T> {
     Fail(FailUserResult),
 }
 
+impl<T> UserResult<T> {
+    pub fn is_ok(&self) -> bool {
+        match self {
+            UserResult::Ok(_) => true,
+            UserResult::Fail(_) => false,
+        }
+    }
+
+    pub fn err(self) -> Option<FailUserResult> {
+        match self {
+            UserResult::Ok(_) => None,
+            UserResult::Fail(fail_user_result) => Some(fail_user_result),
+        }
+    }
+}
+
+impl<T> From<OkUserResult<T>> for UserResult<T> {
+    fn from(value: OkUserResult<T>) -> Self {
+        Self::Ok(value)
+    }
+}
+
+impl<T> From<FailUserResult> for UserResult<T> {
+    fn from(value: FailUserResult) -> Self {
+        Self::Fail(value)
+    }
+}
+
 /// SAFETY:
 /// UserResult is meant to be sent from one thread to another, BUT not shared between threads
 /// For example:
@@ -86,16 +114,15 @@ pub enum UserResult<T> {
 /// UserResult is meant to not be synced between threads while its purpose is that example
 unsafe impl<T> Send for UserResult<T> {}
 
-impl<T> Drop for UserResult<T> {
+impl<T> Drop for OkUserResult<T> {
     fn drop(&mut self) {
-        // SAFETY: Rust always holds ownership over any UserResult
-        // For example, if created in classify the Rust layer is returned said result
-        // Therefore, Rust holds the ownership of UserResult aslong as users don't hold
-        // unexpected pointers/references to UserResult
-        match self {
-            Self::Ok(inner) => bridge::drop_result(&inner.inner),
-            Self::Fail(inner) => bridge::drop_result(&inner.inner),
-        }
+        bridge::drop_result(&self.inner);
+    }
+}
+
+impl Drop for FailUserResult {
+    fn drop(&mut self) {
+        bridge::drop_result(&self.inner);
     }
 }
 
@@ -107,7 +134,7 @@ impl<T> Deref for OkUserResult<T> {
     }
 }
 
-impl<T> OkUserResult<T> {
+impl OkUserResult<Shared> {
     pub fn extract_payload_as_shared(&self) -> Shared {
         let raw_shared = bridge::extract_shared_payload(&self)
             .expect("Attempted to access payload on a FAIL result.");
@@ -124,9 +151,9 @@ impl FailUserResult {
     }
 }
 
-pub struct Context(pub UniquePtr<bridge::OpaqueCtx>);
+pub struct FzContext(pub UniquePtr<bridge::OpaqueCtx>);
 
-impl Context {
+impl FzContext {
     pub unsafe fn new(mem_limit: usize) -> Self {
         Self {
             0: bridge::create_new_ctx(mem_limit).unwrap_or_else(|e| {
@@ -136,21 +163,21 @@ impl Context {
     }
 }
 
-impl Deref for Context {
+impl Deref for FzContext {
     type Target = UniquePtr<bridge::OpaqueCtx>;
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl Drop for Context {
+impl Drop for FzContext {
     fn drop(&mut self) {
         bridge::drop_ctx(&self.0);
     }
 }
 pub struct Document<'ctx> {
     inner: UniquePtr<bridge::OpaqueDoc>,
-    _ctx: &'ctx Context,
+    _ctx: &'ctx FzContext,
 }
 
 impl<'ctx> Drop for Document<'ctx> {
@@ -167,7 +194,7 @@ impl<'ctx> Deref for Document<'ctx> {
 }
 
 impl<'ctx> Document<'ctx> {
-    pub unsafe fn new(path: PathBuf, ctx: &'ctx Context) -> Self {
+    pub unsafe fn new(path: PathBuf, ctx: &'ctx FzContext) -> Self {
         let_cxx_string!(cxx_path = path.to_string_lossy().to_string());
 
         Self {
@@ -196,7 +223,12 @@ impl Deref for Shared {
     }
 }
 
-pub unsafe fn classify(ctx: &Context, doc: &Document, ident: KnownObject, page: u32) -> ClassificationResult {
+pub unsafe fn classify(
+    ctx: &FzContext,
+    doc: &Document,
+    ident: KnownObject,
+    page: u32,
+) -> ClassificationResult {
     let_cxx_string!(ident_to_cxx_str = ident.to_string());
 
     let call = bridge::call_classify(ctx, doc, &ident_to_cxx_str, page)
@@ -220,11 +252,11 @@ pub unsafe fn classify(ctx: &Context, doc: &Document, ident: KnownObject, page: 
 }
 
 pub unsafe fn extract(
-    ctx: &Context,
+    ctx: &FzContext,
     doc: &Document,
     shared: &Shared,
     ident: KnownObject,
-    page: u32
+    page: u32,
 ) -> ExtractionResult /* placeholder */ {
     let_cxx_string!(ident_to_cxx_str = ident.to_string());
 

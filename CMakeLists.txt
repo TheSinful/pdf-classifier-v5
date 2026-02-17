@@ -5,7 +5,7 @@ project(pdf_classifier LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 
 set(SRC_FILES
-    src_cpp/initializer.cpp
+    src_cpp/ffi.cpp
 )
 
 add_executable(pdf_classifier ${SRC_FILES})

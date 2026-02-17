@@ -4,16 +4,15 @@ use crate::ffi::*;
 use crate::generated::generated_object_types::KnownObject;
 use std::path::PathBuf;
 
-
 #[test]
 fn create_ctx() {
-    let ctx = unsafe { Context::new(STANDARD_CTX_MEM_LIMIT) };
+    let ctx = unsafe { FzContext::new(STANDARD_CTX_MEM_LIMIT) };
     assert!(!ctx.0.is_null())
 }
 
 #[test]
 fn test_classify_call() {
-    let ctx = unsafe { Context::new(STANDARD_CTX_MEM_LIMIT) };
+    let ctx = unsafe { FzContext::new(STANDARD_CTX_MEM_LIMIT) };
     assert!(!ctx.0.is_null());
 
     let test_doc_path = std::env::var("CARGO_MANIFEST_DIR").unwrap() + "/data/small_test_doc.pdf";
@@ -29,7 +28,7 @@ fn test_classify_call() {
 
 #[test]
 fn test_extract_call() {
-    let ctx = unsafe { Context::new(STANDARD_CTX_MEM_LIMIT) };
+    let ctx = unsafe { FzContext::new(STANDARD_CTX_MEM_LIMIT) };
     assert!(!ctx.is_null());
 
     let test_doc_path = std::env::var("CARGO_MANIFEST_DIR").unwrap() + "/data/small_test_doc.pdf";

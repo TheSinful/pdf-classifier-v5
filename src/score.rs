@@ -15,7 +15,7 @@ impl Score {
     }
 
     #[allow(non_snake_case)]
-    pub fn NO_EFFECT() -> Self {
+    pub fn NO_AFFECT() -> Self {
         Self { 0: 0.0f32 }
     }
 }

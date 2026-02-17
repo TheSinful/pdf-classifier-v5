@@ -28,15 +28,15 @@ impl CompleteDeferBlock {
 pub struct IncompleteDeferBlock {
     start_page: Page,
     end_page: Unknown<Page>,
-    classification_results: ClassifierResultMap<(KnownObject, Rc<ClassificationResult>)>,
+    hypotheses: ClassifierResultMap<(KnownObject, Rc<ClassificationResult>)>,
 }
 
 impl IncompleteDeferBlock {
-    pub fn new(start_page: Page, total_pages: usize) -> Self {
+    pub fn new(start_page: Page, total_page_count: usize) -> Self {
         Self {
             start_page,
             end_page: Unknown::pending(),
-            classification_results: ClassifierResultMap::new(total_pages),
+            hypotheses: ClassifierResultMap::with_capacity(total_page_count),
         }
     }
 

@@ -16,7 +16,7 @@ target_include_directories(my_lib PUBLIC
 )
 
 set_target_properties(my_lib PROPERTIES
-    PUBLIC_HEADER test.h #insert other header files here 
+    PUBLIC_HEADER test.hpp #insert other header files here 
 )
 
 install(TARGETS my_lib

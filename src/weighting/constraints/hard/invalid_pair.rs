@@ -1,11 +1,11 @@
 use super::HardConstraint;
-use crate::{generated::reflected_objects, page::Page};
+use crate::{context::Context, generated::reflected_objects, page::Page};
 
 pub struct ValidPairRule;
 
 impl HardConstraint for ValidPairRule {
     fn eval(
-        ctx: &crate::classifier::context::ClassifierContext,
+        ctx: &Context,
         class: crate::generated::generated_object_types::KnownObject,
         page: Page,
     ) -> bool {

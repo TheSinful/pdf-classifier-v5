@@ -1,41 +1,31 @@
+use crate::ffi::UserResult;
 use crate::generated::generated_object_types::KnownObject;
+use super::util::get_test_doc_path;
 use crate::threading::*;
-use std::path::PathBuf;
-
-fn get_test_doc_path() -> PathBuf {
-    let root = std::env::var("CARGO_MANIFEST_DIR").unwrap();
-    PathBuf::from(root).join("data/small_test_doc.pdf")
-}
 
 #[tokio::test]
 async fn test_bulk_worker_spawn() {
-    WorkerThread::spawn(get_test_doc_path());
-    WorkerThread::spawn(get_test_doc_path());
-    WorkerThread::spawn(get_test_doc_path());
-    WorkerThread::spawn(get_test_doc_path());
+    WorkerThread::spawn(get_test_doc_path(), 1);
+    WorkerThread::spawn(get_test_doc_path(), 2);
+    WorkerThread::spawn(get_test_doc_path(), 3);
+    WorkerThread::spawn(get_test_doc_path(), 4);
 }
 
 #[tokio::test]
 async fn test_worker_classify_call() {
-    let worker = WorkerThread::spawn(get_test_doc_path());
-    let result = worker
+    let worker = WorkerThread::spawn(get_test_doc_path(), 1);
+    let fut = worker
         .classify(KnownObject::CHAPTER, 0u32.into()) // from examples
         .await;
 
-    match result {
-        Ok(_) => {}
-        Err(e) => panic!("Failed to run classify on thread! {}", e.to_string()),
-    }
-
-    let unwrap = result.unwrap();
-    match &unwrap {
-        crate::ffi::UserResult::Ok(ok_user_result) => {
+    match &fut.result {
+        UserResult::Ok(ok_user_result) => {
             assert!(
                 !ok_user_result.extract_payload_as_shared().is_null(),
                 "Extracted payload was null!"
             )
         }
-        crate::ffi::UserResult::Fail(_) => {
+        UserResult::Fail(_) => {
             panic!("Returned unexpected UserResult, example should've returned an Ok")
         }
     }
@@ -43,15 +33,10 @@ async fn test_worker_classify_call() {
 
 #[tokio::test]
 async fn test_worker_extract_call() {
-    let worker = WorkerThread::spawn(get_test_doc_path());
+    let worker = WorkerThread::spawn(get_test_doc_path(), 1);
     let classify_result = worker.classify(KnownObject::CHAPTER, 0u32.into()).await; // from examples
 
-    match classify_result {
-        Ok(_) => {}
-        Err(e) => panic!("Failed to run classify on thread! {}", e.to_string()),
-    }
-
-    let classify_unwrap = classify_result.unwrap();
+    let classify_unwrap = classify_result.result;
     let shared = match &classify_unwrap {
         crate::ffi::UserResult::Ok(ok_user_result) => {
             let unwrap = ok_user_result.extract_payload_as_shared();
@@ -70,14 +55,16 @@ async fn test_worker_extract_call() {
             shared,
             0u32.into(),
         )
-        .await;
+        .await
+        .result;
 
     match extract_result {
-        Ok(_) => {}
-        Err(e) => panic!("Failed to run classify on thread! {}", e.to_string()),
+        UserResult::Ok(_) => {}
+        UserResult::Fail(f) => {
+            panic!(
+                "Failed to run extraction on thread! {}",
+                f.extract_fail_rsn()
+            )
+        }
     }
-
-    extract_result.unwrap();
-    // ! extract returns NULL because it has no outputted data currently
-    // ! so there is no point to validating its outputted data.
 }

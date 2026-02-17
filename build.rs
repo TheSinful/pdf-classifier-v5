@@ -4,17 +4,16 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=src_cpp");
     println!("cargo:rerun-if-changed=src/ffi.rs");
-    println!("cargo:rerun-if-changed=src_cpp/initializer.cpp");
+    println!("cargo:rerun-if-changed=src_cpp/ffi.cpp");
     println!("cargo:rerun-if-changed=CMakeLists.txt");
     println!("cargo:rerun-if-env-changed=CXX");
     println!("cargo:rerun-if-env-changed=CC");
     println!("cargo:rerun-if-env-changed=PROFILE");
 
-
     let mut build = cxx_build::bridges(&["src/ffi.rs"]);
     build
         .flag_if_supported("/std:c++20")
-        .file("src_cpp/initializer.cpp")
+        .file("src_cpp/ffi.cpp")
         .include("./src_cpp")
         .include("./build/include")
         .cpp(true)

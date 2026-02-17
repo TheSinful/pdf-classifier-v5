@@ -8,10 +8,10 @@ A **constraint-based, sequential inference engine** for structured documents tha
 
 Processing a linear stream of pages, assigning each a type from a finite set (chapter, subchapter, diagram, datatable), while:
 
--   Obeying global document structure constraints
--   Recovering from incorrect early predictions
--   Remaining fast, safe, and explainable
--   Using expensive ground-truth validation (PDF classification) sparingly
+- Obeying global document structure constraints
+- Recovering from incorrect early predictions
+- Remaining fast, safe, and explainable
+- Using expensive ground-truth validation (PDF classification) sparingly
 
 This is closer to **parsing**, **constraint satisfaction**, and **sequence labeling** than to neural networks.
 
@@ -23,29 +23,29 @@ The classifier separates concerns into three distinct layers that **must not** b
 
 **(A) Inference Layer (cheap, speculative)**
 
--   Runs sequentially on main thread
--   Makes guesses about page types based on context + constraints
--   Scores candidate types using hard/soft constraints
--   Must be fast (<1ms per page) and reversible
--   Can be wrong — that's intentional
--   Lives in: `src/classifier/mod.rs`, `src/classifier/constraints/`
+- Runs sequentially on main thread
+- Makes guesses about page types based on context + constraints
+- Scores candidate types using hard/soft constraints
+- Must be fast (<1ms per page) and reversible
+- Can be wrong — that's intentional
+- Lives in: `src/classifier/mod.rs`, `src/classifier/constraints/`
 
 **(B) Classification/Extraction Layer (expensive, authoritative)**
 
--   Validates an inference guess by calling user-defined C++ functions
--   Can fail (returns `UserResult::Fail`)
--   Runs off-thread via `WorkerThread` pool
--   Produces ground truth that corrects inference
--   Feeds back into context for future inferences
--   Lives in: `src_cpp/`, `examples/test.cpp` (user code)
+- Validates an inference guess by calling user-defined C++ functions
+- Can fail (returns `UserResult::Fail`)
+- Runs off-thread via `WorkerThread` pool
+- Produces ground truth that corrects inference
+- Feeds back into context for future inferences
+- Lives in: `src_cpp/`, `examples/test.cpp` (user code)
 
 **(C) Context Layer (memory, state tracking)**
 
--   Holds structural state (current parent, page history)
--   Tracks dynamic statistics (average pair counts, frequencies)
--   Marks regions as "trusted" vs "poisoned" (deferred blocks)
--   Does NOT decide — it only informs inference
--   Lives in: `src/classifier/context.rs`
+- Holds structural state (current parent, page history)
+- Tracks dynamic statistics (average pair counts, frequencies)
+- Marks regions as "trusted" vs "poisoned" (deferred blocks)
+- Does NOT decide — it only informs inference
+- Lives in: `src/classifier/context.rs`
 
 **Critical Insight**: This separation enables deferred blocks, parallel validation, and graceful degradation when early guesses are wrong.
 
@@ -53,24 +53,24 @@ The classifier separates concerns into three distinct layers that **must not** b
 
 **Python (`src_py/`)** — Schema Compiler & Build Orchestrator
 
--   **Responsibility**: Schema definition, code generation, build coordination
--   **Why Python**: Need reflection and dynamic object graphs for user-facing DSL
--   **Not Used For**: Runtime classification (happens entirely in Rust/C++)
--   **Key Insight**: Python is the "front-end" that compiles schemas into static artifacts
+- **Responsibility**: Schema definition, code generation, build coordination
+- **Why Python**: Need reflection and dynamic object graphs for user-facing DSL
+- **Not Used For**: Runtime classification (happens entirely in Rust/C++)
+- **Key Insight**: Python is the "front-end" that compiles schemas into static artifacts
 
 **C++ (`src_cpp/`)** — PDF Access & Execution Layer
 
--   **Responsibility**: MuPDF integration, user classification logic hosting
--   **Why C++**: MuPDF is C-native; page contexts are thread-affine; need predictable ABI
--   **Not Used For**: Orchestration, parallelism, or state management
--   **Key Insight**: C++ is a _controlled execution environment_, not the engine
+- **Responsibility**: MuPDF integration, user classification logic hosting
+- **Why C++**: MuPDF is C-native; page contexts are thread-affine; need predictable ABI
+- **Not Used For**: Orchestration, parallelism, or state management
+- **Key Insight**: C++ is a _controlled execution environment_, not the engine
 
 **Rust (`src/`)** — Classification Engine & Orchestrator
 
--   **Responsibility**: Parallel scheduling, state machines, algorithmic coordination
--   **Why Rust**: Safe parallelism, deterministic ownership, scheduler-heavy workloads
--   **Not Used For**: Understanding PDF internals (delegates to C++)
--   **Key Insight**: Rust is the "brains" that orchestrates classification across threads
+- **Responsibility**: Parallel scheduling, state machines, algorithmic coordination
+- **Why Rust**: Safe parallelism, deterministic ownership, scheduler-heavy workloads
+- **Not Used For**: Understanding PDF internals (delegates to C++)
+- **Key Insight**: Rust is the "brains" that orchestrates classification across threads
 
 ### Responsibility Boundaries
 
@@ -116,9 +116,9 @@ cargo build
 
 The Python [`Builder`](src_py/build.py) class orchestrates:
 
--   MuPDF CMake build → `build/lib/`
--   Header generation → `build/include/shared/`
--   User project CMake build + validation
+- MuPDF CMake build → `build/lib/`
+- Header generation → `build/include/shared/`
+- User project CMake build + validation
 
 ### Defining Document Objects (Python DSL)
 
@@ -145,16 +145,15 @@ build.build()
 
 **Key Patterns**:
 
--   `def_obj()` creates object types; returns `ReferenceType[Object]` (weakref to avoid cycles)
--   `def_pair()` creates mutually-aware pairs (e.g., diagram ↔ datatable relationship)
--   Parent-child relationships define classification order (children inherit context)
--   `ObjectFunc` links to user C++ functions implementing classification logic
+- `def_obj()` creates object types; returns `ReferenceType[Object]` (weakref to avoid cycles)
+- `def_pair()` creates mutually-aware pairs (e.g., diagram ↔ datatable relationship)
+- Parent-child relationships define classification order (children inherit context)
+- `ObjectFunc` links to user C++ functions implementing classification logic
 
 **What Users Actually ImpSchema Compilation Outputs)
 The Python builder generates these in `build/include/shared/` — **do not edit manually\*\*:
 
 1. **`generated_page_types.h`**:
-
     - Enum of all object types (`KnownObject::chapter`, etc.)
     - String conversion functions (`page_type_to_string()`, `page_type_from_string()`)
     - Used by Rust classifier to identify object types at runtime
@@ -165,19 +164,19 @@ The Python builder generates these in `build/include/shared/` — **do not edit 
       -Opaque Shared State Pattern
       Shared state between `classify()` and `extract()` is **intentionally type-erased**:
 
--   Rust/classifier **never interprets** user data (treats as `void*`)
--   Avoids templating the entire engine over user types
--   User owns lifetime; engine merely forwards pointers
--   Originally `std::any`, now raw `void*` for FFI simplicity
+- Rust/classifier **never interprets** user data (treats as `void*`)
+- Avoids templating the entire engine over user types
+- User owns lifetime; engine merely forwards pointers
+- Originally `std::any`, now raw `void*` for FFI simplicity
 
 **Why**: Classifier is stateless with respect to object contents. It orchestrates, not interprets.
 
 ### MuPDF Context Ownership (Parallelism Constraint)
 
--   **256 MiB default limit** per context (see [`STANDARD_MEM_LIMIT`](src/initializer.rs#L4))
--   **Thread-local contexts**: MuPDF contexts cannot be shared across threads
--   **Upfront initialization**: Context creation is expensive → happens once per worker
--   Each Rust worker thread owns one `fz_context*` for its execution lane
+- **256 MiB default limit** per context (see [`STANDARD_MEM_LIMIT`](src/initializer.rs#L4))
+- **Thread-local contexts**: MuPDF contexts cannot be shared across threads
+- **Upfront initialization**: Context creation is expensive → happens once per worker
+- Each Rust worker thread owns one `fz_context*` for its execution lane
 
 **Why This Matters**: Parallel classification requires isolated PDF access per thread. This drives Rust's role as scheduler (manages thread pool) vs C++'s role as executor (owns contexts).
 
@@ -192,15 +191,15 @@ The Python builder generates these in `build/include/shared/` — **do not edit 
 
 ```rust
 pub trait HardConstraint {
-    fn eval(ctx: &ClassifierContext, class: KnownObject) -> bool;
+    fn eval(ctx: &Context, class: KnownObject) -> bool;
 }
 ```
 
 **Examples**:
 
--   `is_child(parent, child)` — "X cannot be child of Y"
--   `is_pair(o1, o2)` — "This pair relationship is invalid"
--   Parent-child violations (e.g., chapter cannot be child of diagram)
+- `is_child(parent, child)` — "X cannot be child of Y"
+- `is_pair(o1, o2)` — "This pair relationship is invalid"
+- Parent-child violations (e.g., chapter cannot be child of diagram)
 
 Hard constraints act as **filters**, not scorers. If any hard constraint returns `false`, that object type is eliminated from consideration.
 
@@ -213,15 +212,15 @@ Hard constraints act as **filters**, not scorers. If any hard constraint returns
 
 ```rust
 pub trait SoftConstraint {
-    fn eval(ctx: &ClassifierContext, class: KnownObject) -> f32;
+    fn eval(ctx: &Context, class: KnownObject) -> f32;
 }
 ```
 
 **Examples** (from `StructuralWeights`):
 
--   `REWARD_only_valid_child` — "This is the only structurally sound child here"
--   `REWARD_end_pair` — "This completes an expected diagram-datatable pair"
--   `PENALTY_skipped_children` — "This jumps too quickly (subchapter → subchapter)"
+- `REWARD_only_valid_child` — "This is the only structurally sound child here"
+- `REWARD_end_pair` — "This completes an expected diagram-datatable pair"
+- `PENALTY_skipped_children` — "This jumps too quickly (subchapter → subchapter)"
 
 Soft constraints form a **linear scoring model** where final score = Σ(constraint_score).
 
@@ -234,10 +233,10 @@ Soft constraints form a **linear scoring model** where final score = Σ(constrai
 
 **Benefits**:
 
--   Full inlining (no vtable indirection)
--   No allocation, no runtime polymorphism
--   Predictable performance in hot inference loop
--   Easy auditing (just read the function)
+- Full inlining (no vtable indirection)
+- No allocation, no runtime polymorphism
+- Predictable performance in hot inference loop
+- Easy auditing (just read the function)
 
 This is a **compiler-style optimization**, not a beginner pattern.
 
@@ -286,25 +285,25 @@ All generated automatically by Python builder's `_build_valid_*_matrix()` method
 
 ### Inference
 
--   **What**: Guessing page type under uncertainty
--   **Speed**: Must be fast (~1ms)
--   **Correctness**: Can be wrong
--   **Reversibility**: Must not poison system permanently
--   **Where**: Rust inference loop (`Classifier::infer()`)
+- **What**: Guessing page type under uncertainty
+- **Speed**: Must be fast (~1ms)
+- **Correctness**: Can be wrong
+- **Reversibility**: Must not poison system permanently
+- **Where**: Rust inference loop (`Classifier::infer()`)
 
 ### Classification
 
--   **What**: Verifying guess with ground truth (call user C++ function)
--   **Speed**: Expensive (10-100ms, varies by PDF complexity)
--   **Correctness**: Authoritative (but can fail with error)
--   **When**: After inference, off-thread
--   **Where**: C++ classify functions via `WorkerThread::classify()`
+- **What**: Verifying guess with ground truth (call user C++ function)
+- **Speed**: Expensive (10-100ms, varies by PDF complexity)
+- **Correctness**: Authoritative (but can fail with error)
+- **When**: After inference, off-thread
+- **Where**: C++ classify functions via `WorkerThread::classify()`
 
 **Architectural consequence**: This separation enables:
 
--   Speculative execution (guess 10 pages ahead while 1 validates)
--   Parallel validation (classify multiple pages simultaneously)
--   Deferred blocks (continue inferring even when validation fails)
+- Speculative execution (guess 10 pages ahead while 1 validates)
+- Parallel validation (classify multiple pages simultaneously)
+- Deferred blocks (continue inferring even when validation fails)
 
 ## Deferred Blocks: Uncertainty Tracking
 
@@ -335,10 +334,10 @@ pub enum DeferBlock {
 
 **What a defer block represents**:
 
--   "We crossed an uncertainty boundary"
--   Downstream context is unreliable
--   Structural assumptions may be invalid
--   Don't trust inferences until we find an anchor
+- "We crossed an uncertainty boundary"
+- Downstream context is unreliable
+- Structural assumptions may be invalid
+- Don't trust inferences until we find an anchor
 
 **Lifecycle**:
 
@@ -352,16 +351,16 @@ pub enum DeferBlock {
 
 **Independent objects** (safe anchors):
 
--   Can appear without relying on previous structure
--   Can reset/re-anchor context
--   End defer blocks
--   Examples: `chapter`, `subchapter`
+- Can appear without relying on previous structure
+- Can reset/re-anchor context
+- End defer blocks
+- Examples: `chapter`, `subchapter`
 
 **Dependent objects** (unsafe during defer):
 
--   Only meaningful relative to earlier objects
--   Unsafe to infer when context is poisoned
--   Examples: `diagram`, `datatable` (paired elements)
+- Only meaningful relative to earlier objects
+- Unsafe to infer when context is poisoned
+- Examples: `diagram`, `datatable` (paired elements)
 
 **Recovery strategy**: Skip dependent inference inside defer blocks, search only for independents, then backfill.
 
@@ -385,9 +384,9 @@ final_score(obj) = Σ hard_constraints(obj) * ∞    // if any false, score = -�
 
 **Dynamic adjustments** come from classification feedback:
 
--   Average diagram-datatable pair count per subchapter
--   Frequency of object types in this document
--   Recent pattern matching (last 10 pages)
+- Average diagram-datatable pair count per subchapter
+- Frequency of object types in this document
+- Recent pattern matching (last 10 pages)
 
 **Update mechanism**:
 
@@ -415,16 +414,16 @@ The classifier operates in distinct phases with different trust assumptions:
 
 The system prioritizes:
 
--   ✅ Safety (don't crash on bad inferences)
--   ✅ Explainability (track why each decision was made)
--   ✅ Recoverability (defer blocks, not panics)
--   ✅ Graceful degradation (keep going with reduced confidence)
+- ✅ Safety (don't crash on bad inferences)
+- ✅ Explainability (track why each decision was made)
+- ✅ Recoverability (defer blocks, not panics)
+- ✅ Graceful degradation (keep going with reduced confidence)
 
 Over:
 
--   ❌ Always being right
--   ❌ Always being consistent
--   ❌ Inferring everything immediately
+- ❌ Always being right
+- ❌ Always being consistent
+- ❌ Inferring everything immediately
 
 This is the mindset difference between **scripts** and **systems**.
 
@@ -436,7 +435,6 @@ The [`Builder._validate_expected_funcs_exist()`](src_py/build.py#L169) method en
 
 1. Parses all `.h` files in user project for function declarations
 2. ChBuild Order Dependency\*\* (CRITICAL):
-
     - **Must run Python builder first**: Generates headers Rust needs
     - Running `cargo build` before `python src_py/main.py` → missing `build/include/shared/*.h`
     - **Why**: Python compiles the schema; Rust links against compiled artifacts
@@ -454,24 +452,24 @@ The [`Builder._validate_expected_funcs_exist()`](src_py/build.py#L169) method en
 
 **What Changes**:
 
--   `generated_page_types.h` gets new enum variant
--   `reflect Strategy
--   **Rust tests** ([`src/tests/`](src/tests/mod.rs)): Currently minimal; focus on FFI boundary correctness
--   **Python tests** ([`src_py/tests/`](src_py/tests/)): Builder validation (function parsing, header generation)
--   **Example project** ([`examples/`](examples/)): Full end-to-end workflow demonstration
+- `generated_page_types.h` gets new enum variant
+- `reflect Strategy
+- **Rust tests** ([`src/tests/`](src/tests/mod.rs)): Currently minimal; focus on FFI boundary correctness
+- **Python tests** ([`src_py/tests/`](src_py/tests/)): Builder validation (function parsing, header generation)
+- **Example project** ([`examples/`](examples/)): Full end-to-end workflow demonstration
 
 **Testing Philosophy**: Schema compiler (Python) catches errors early; runtime (Rust) assumes valid schemas.
 
 ## External Dependencies
 
--   **MuPDF**: PDF rendering library (C-native, built via CMake, linked statically)
-    -   Thread-affine contexts drive parallelism constraints
-    -   Owns all PDF access (document parsing, page rendering)
--   **cxx**: Rust-C++ FFI bridge (handles type conversions, memory safety)
-    -   Enables Rust orchestration without C++ complexity in scheduler
-    -   Opaque pointers enforce clear responsibility boundaries
--   **CMake 4.2+**: Required for building MuPDF and user projects
-    -   Python builder orchestrates CMake for both layers
+- **MuPDF**: PDF rendering library (C-native, built via CMake, linked statically)
+    - Thread-affine contexts drive parallelism constraints
+    - Owns all PDF access (document parsing, page rendering)
+- **cxx**: Rust-C++ FFI bridge (handles type conversions, memory safety)
+    - Enables Rust orchestration without C++ complexity in scheduler
+    - Opaque pointers enforce clear responsibility boundaries
+- **CMake 4.2+**: Required for building MuPDF and user projects
+    - Python builder orchestrates CMake for both layers
 
 ## AI Agent Working Protocol
 
@@ -482,7 +480,6 @@ The [`Builder._validate_expected_funcs_exist()`](src_py/build.py#L169) method en
 1. **Restate the User's Request**: In your own words, explain what you understand the user is asking for. This ensures alignment before proceeding.
 
 2. **Identify the Scope**: Determine if the request involves:
-
     - **Code Generation** (new functions, classes, or substantial logic)
     - **Conceptual Understanding** (architecture clarification, planning, small edits)
     - **Investigation** (searching, reading, analyzing existing code)
@@ -506,9 +503,9 @@ Store all AI agent interactions in `.github/agent-conceptual-log.md` with the fo
 
 ### Scope Classification
 
--   [ ] Code Generation (functions/classes)
--   [ ] Conceptual Work (understanding/planning/small edits)
--   [ ] Investigation (reading/searching)
+- [ ] Code Generation (functions/classes)
+- [ ] Conceptual Work (understanding/planning/small edits)
+- [ ] Investigation (reading/searching)
 
 ### Actions Taken
 
@@ -516,19 +513,19 @@ Store all AI agent interactions in `.github/agent-conceptual-log.md` with the fo
 
 ### Code Changes (if any)
 
--   **File**: `path/to/file`
--   **Type**: Function addition | Class creation | Refactoring
--   **Purpose**: Why this code was added
--   **Functions Added**: `function_name_1()`, `function_name_2()`
+- **File**: `path/to/file`
+- **Type**: Function addition | Class creation | Refactoring
+- **Purpose**: Why this code was added
+- **Functions Added**: `function_name_1()`, `function_name_2()`
 
 ### Conceptual Changes (if no code generation)
 
 [Explain what was understood, clarified, or planned. Include:]
 
--   Architecture insights gained
--   Responsibility boundaries clarified
--   Design decisions understood
--   Small edits (< 5 lines, formatting, documentation)
+- Architecture insights gained
+- Responsibility boundaries clarified
+- Design decisions understood
+- Small edits (< 5 lines, formatting, documentation)
 
 ### Reasoning
 
@@ -541,21 +538,21 @@ Store all AI agent interactions in `.github/agent-conceptual-log.md` with the fo
 
 **Code Changes** (must be logged with function names):
 
--   New function definitions
--   New class/struct definitions
--   Substantial logic additions (>10 lines)
--   FFI boundary extensions
--   Build system modifications
+- New function definitions
+- New class/struct definitions
+- Substantial logic additions (>10 lines)
+- FFI boundary extensions
+- Build system modifications
 
 **Conceptual Changes** (logged as understanding):
 
--   Documentation updates
--   Comment additions
--   Variable renames
--   Small formatting fixes (<5 lines)
--   Investigative file reads
--   Architecture discussions
--   Planning without implementation
+- Documentation updates
+- Comment additions
+- Variable renames
+- Small formatting fixes (<5 lines)
+- Investigative file reads
+- Architecture discussions
+- Planning without implementation
 
 ### Mandatory Log Entry Triggers
 
@@ -581,11 +578,11 @@ When reasoning about this codebase:
 **Not a typical project**: This is schema-driven compilation, not generic PDF parsing. The three languages exist because of orthogonal constraints, not arbitrary choices. Understanding "why each layer exists" is more important than "how each layer works".
 **Example Use Cases**:
 
--   Exposing MuPDF metadata extraction
--   Adding validation/diagnostics hooks
--   Implementing result serialization to Python
-    -   Always check `ref()` returns non-None before accessing (see `deref()` helper in [`object.py`](src_py/object.py#L13-L16))
-    -   Parent-child relationships use weakrefs to avoid circular references
+- Exposing MuPDF metadata extraction
+- Adding validation/diagnostics hooks
+- Implementing result serialization to Python
+    - Always check `ref()` returns non-None before accessing (see `deref()` helper in [`object.py`](src_py/object.py#L13-L16))
+    - Parent-child relationships use weakrefs to avoid circular references
 
 **Why Validate in Python**: Catches user errors before expensive C++ compilation. Schema compiler's job is to guarantee valid builds.
 }
@@ -626,7 +623,7 @@ The [`Builder._validate_expected_funcs_exist()`](src_py/build.py#L169) method:
 1. **Order Dependency**: Running `cargo build` before Python builder fails (missing headers)
 2. **Function Signature Mismatches**: Builder validates at Python build time, not compile time
 3. **Weakref Dereference**: Always check `ref()` returns non-None before accessing (see `deref()` helper)
-4. **Opaque Type Casting**: C++ must cast `void*` back to `fz_context*`/`fz_document*` (see [`initializer.cpp`](src_cpp/initializer.cpp#L13-L14))
+4. **Opaque Type Casting**: C++ must cast `void*` back to `fz_context*`/`fz_document*` (see [`ffi.cpp`](src_cpp/ffi.cpp#L13-L14))
 
 ## Integration Points
 
@@ -638,7 +635,7 @@ The [`Builder._validate_expected_funcs_exist()`](src_py/build.py#L169) method:
 
 ### Extending FFI Surface
 - Add new functions to `#[cxx::bridge]` in [`src/initializer.rs`](src/initializer.rs#L8-L30)
-- Implement C++ side in [`src_cpp/initializer.cpp`](src_cpp/initializer.cpp)
+- Implement C++ side in [`src_cpp/ffi.cpp`](src_cpp/ffi.cpp)
 - Add corresponding Rust wrapper if needed (see `Context`, `Document` structs)
 
 ## Testing

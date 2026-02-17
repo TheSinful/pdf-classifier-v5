@@ -8,14 +8,15 @@ pub mod pair_rewards;
 pub mod root_object;
 pub mod skipped_children;
 
+
 use super::impl_constraint_enum;
-use crate::classifier::constraints::soft::pair_rewards::PairRewards;
-use crate::classifier::constraints::soft::root_object::RootObjectReward;
-use crate::classifier::constraints::soft::skipped_children::SkippedChildrenConstraint;
-use crate::classifier::context::ClassifierContext;
-use crate::classifier::score::Score;
+use crate::context::Context;
 use crate::generated::generated_object_types::KnownObject;
 use crate::page::Page;
+use crate::score::Score;
+use pair_rewards::PairRewards;
+use root_object::RootObjectReward;
+use skipped_children::SkippedChildrenConstraint;
 
 /// Marker trait that indicates self penalizes the returned evaluation
 /// (or rather is -f32)
@@ -29,8 +30,10 @@ trait Penalty: SoftConstraint {}
 /// self is going to return a positive float.
 trait Reward: SoftConstraint {}
 
-trait SoftConstraint {
-    fn eval(ctx: &ClassifierContext, class: KnownObject, page: Page) -> Score;
+pub trait SoftConstraint {
+    const REWARD: f32;
+
+    fn eval(ctx: &Context, class: KnownObject, page: Page) -> Score;
 }
 
 impl_constraint_enum!(

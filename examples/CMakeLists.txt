@@ -15,7 +15,7 @@ target_include_directories(classifier_intermediary PRIVATE
 )
 
 set_target_properties(classifier_intermediary PROPERTIES
-    PUBLIC_HEADER test.h #insert other header files here 
+    PUBLIC_HEADER test.hpp #insert other header files here 
 )
 
 install(TARGETS classifier_intermediary

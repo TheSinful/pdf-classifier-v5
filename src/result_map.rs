@@ -2,6 +2,7 @@ use crate::page::Page;
 use std::ops::{Index, IndexMut};
 
 #[derive(Clone)]
+/// 3D vec which maps page numbers to a list of T 
 pub struct ClassifierResultMap<T> {
     /// Equivalent to a key-value structure because:
     /// page_num == i (when i is an index of inner)
@@ -10,10 +11,10 @@ pub struct ClassifierResultMap<T> {
 }
 
 impl<T> ClassifierResultMap<T> {
-    pub fn new(total_pages: usize) -> Self {
-        let mut vec: Vec<Vec<T>> = Vec::with_capacity(total_pages);
+    pub fn with_capacity(capacity: usize) -> Self {
+        let mut vec: Vec<Vec<T>> = Vec::with_capacity(capacity);
 
-        for _ in 0..total_pages {
+        for _ in 0..capacity {
             vec.push(Vec::new());
         }
 

@@ -21,13 +21,15 @@ class Object:
     pair: Optional[PAIR_TYPE]
     _classify_func_name: str 
     _extract_func_name: str
+    is_organizational: bool
     
-    def __init__(self, name: str, _classify_func_name: str, _extracted_func_name: str) -> None:
+    def __init__(self, name: str, _classify_func_name: str, _extracted_func_name: str, is_organizational: bool = False) -> None:
         self.name = name 
         self.children = []
         self.pair = None
         self._classify_func_name = _classify_func_name
         self._extract_func_name = _extracted_func_name
+        self.is_organizational = is_organizational
     
     def __serialize_to_cpp_str__(self, visited=None) -> str: 
         if visited is None: 
@@ -70,7 +72,8 @@ class ObjectFunc:
     name: str
             
 def def_obj(name: str, classify: ObjectFunc, 
-            extract: ObjectFunc, parent: Optional[ReferenceType["Object"]] = None
+            extract: ObjectFunc, parent: Optional[ReferenceType["Object"]] = None,
+            is_organizational: bool = False
             ) -> ReferenceType[Object]: 
     global OBJECTS
     global EXPECTED_CLASSIFY_FUNCTIONS
@@ -85,7 +88,7 @@ def def_obj(name: str, classify: ObjectFunc,
     EXPECTED_CLASSIFY_FUNCTIONS.append((classify.file, name, _classify_func_name))    
     EXPECTED_EXTRACT_FUNCTIONS.append((extract.file, name, _extract_func_name))
             
-    obj = Object(name, _classify_func_name, _extract_func_name)
+    obj = Object(name, _classify_func_name, _extract_func_name, is_organizational)
     
     if parent is not None:
         
@@ -101,12 +104,13 @@ def def_obj(name: str, classify: ObjectFunc,
     
 def def_pair(name_1: str, obj_1_classify: ObjectFunc,  obj_1_extract: ObjectFunc,  
              name_2: str, obj_2_classify: ObjectFunc, obj_2_extract: ObjectFunc, 
-             parent: ReferenceType["Object"]) -> tuple[ReferenceType[Object], ReferenceType[Object]]:
+             parent: ReferenceType["Object"], is_organizational: bool = False) -> tuple[ReferenceType[Object], ReferenceType[Object]]:
     """
     Defines a pair object, and its pair object. 
+    Paired objects typically are data objects (dependent), so is_organizational defaults to False.
     """
-    first = def_obj(name_1, obj_1_classify, obj_1_extract, parent)
-    second = def_obj(name_2, obj_2_classify, obj_2_extract, parent)
+    first = def_obj(name_1, obj_1_classify, obj_1_extract, parent, is_organizational)
+    second = def_obj(name_2, obj_2_classify, obj_2_extract, parent, is_organizational)
     
     __first = deref(first, "first_pair")
     __second = deref(second, "second_pair")

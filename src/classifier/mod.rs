@@ -1,175 +1,291 @@
-mod constraints;
-mod context;
-mod defer;
-mod result_map;
-mod score;
-mod unknown;
+// mod context;
+// pub mod defer;
+// pub mod result_map;
 
-use crate::always_some::AlwaysSome;
-use crate::classifier::context::ClassifierContext;
-use crate::classifier::defer::{CompleteDeferBlock, IncompleteDeferBlock};
-use crate::ffi::ClassificationResult;
-use crate::generated::generated_object_types::{KnownObject, OBJECT_COUNT};
-use crate::page::Page;
-use score::Score;
-use std::rc::Rc;
+// mod unknown;
 
-type InferenceArray = [(AlwaysSome<KnownObject>, Score); OBJECT_COUNT];
+// use crate::classifier::context::Context;
+// use crate::classifier::defer::{CompleteDeferBlock, IncompleteDeferBlock};
+// use crate::ffi::{ClassificationResult, UserResult};
+// use crate::generated::generated_object_types::{KnownObject, OBJECT_COUNT};
+// use crate::generated::reflected_objects::is_independent;
+// use crate::page::Page;
+// use crate::threading::pool::{JobResult, ThreadPool};
+// use crate::score::Score;
+// use log::{error, info, trace, warn};
+// use std::cell::RefCell;
+// use std::path::PathBuf;
+// use std::rc::Rc;
 
-pub struct Classifier {
-    soft_constraints: Vec<constraints::SoftConstraints>,
-    hard_constraints: Vec<constraints::HardConstraints>,
-    context: ClassifierContext,
-    pending_extraction: Vec<(KnownObject, Rc<ClassificationResult>)>,
-    defers: Vec<CompleteDeferBlock>,
-    current_defer: Option<IncompleteDeferBlock>,
-    current_parent: Option<KnownObject>,
-    current_page: Page,
-}
+// pub type IncompleteDeferBlockPtr = Rc<RefCell<Option<IncompleteDeferBlock>>>;
 
-impl Classifier {
-    pub fn new(start_page: Page, end_page: Page) -> Self {
-        Self {
-            soft_constraints: vec![],
-            hard_constraints: vec![],
-            pending_extraction: vec![],
-            context: ClassifierContext::new(start_page, end_page),
-            defers: vec![],
-            current_defer: None,
-            current_parent: None,
-            current_page: 0u32.into(),
-        }
-    }
+// const MIN_DEFER_INDEPENDENCE_SCORE: f32 = 90.0;
 
-    pub fn begin(&mut self) -> () {
-        for page in 0..self.context.total_page_count {
-            // i != page_num if start_page > 0
-            // therefore we add start_page to offset it correctly.
-            let page: Page = Page::new(page + self.context.start_page.num);
+// #[derive(Clone, Copy)]
+// struct ObjectScore {
+//     class: KnownObject,
+//     score: Score,
+// }
 
-            if self.in_defer() {
-                self.iter_with_deferrence(page);
-            } else {
-                self.iter_with_non_deferrence(page);
-            }
-        }
-    }
+// impl ObjectScore {
+//     pub fn with_float(class: KnownObject, score: f32) -> Self {
+//         Self {
+//             class,
+//             score: score.into(),
+//         }
+//     }
 
-    fn in_defer(&self) -> bool {
-        self.current_defer.is_some()
-    }
+//     pub fn with_score(class: KnownObject, score: Score) -> Self {
+//         ObjectScore { class, score }
+//     }
+// }
 
-    fn iter_with_deferrence(&self, page: Page) -> () {
-        let hypothesis = self.infer(page, true);
-    }
+// // see https://github.com/TheSinful/pdf-classifier-v5/issues/3
+// // type InferenceArray = [(AlwaysSome<KnownObject>, Score); OBJECT_COUNT];
 
-    fn iter_with_non_deferrence(&self, page: Page) -> () {
-        let inference = self.infer(page, false);
-    }
+// pub struct Classifier {
+//     soft_constraints: Vec<SoftConstraints>,
+//     hard_constraints: Vec<HardConstraints>,
+//     context: Context,
+//     pending_extraction: Vec<(KnownObject, Rc<ClassificationResult>)>,
+//     defers: Vec<CompleteDeferBlock>,
+//     current_defer: IncompleteDeferBlockPtr,
+//     in_defer: Rc<bool>,
+//     current_parent: Option<KnownObject>,
+//     current_page: Page,
+//     thread_pool: ThreadPool,
+//     objects: Vec<KnownObject>,
+// }
 
-    fn apply_soft_constraints(&self, class: KnownObject, page: Page) -> Score {
-        let mut total_score: Score = 0.0.into();
+// impl Classifier {
+//     pub fn new(start_page: Page, end_page: Page, num_threads: usize, doc_path: PathBuf) -> Self {
+//         let current_defer = Rc::new(RefCell::new(None));
+//         let mut objects = Vec::<KnownObject>::with_capacity(OBJECT_COUNT);
+//         let defer_flag = Rc::new(false);
 
-        for soft in &self.soft_constraints {
-            let score = soft.eval(&self.context, class, page);
+//         for obj_id in 0..OBJECT_COUNT {
+//             //  SAFETY:
+//             //      We can safely transmute obj_id into KnownObject
+//             //      Because the Python side ensures OBJECT_COUNT == the number of variants in Knownobject
+//             //      This therefore mitigates any chance of unnecessary branching
+//             let class: KnownObject = unsafe { std::mem::transmute(obj_id as u8) };
+//             objects.push(class);
+//         }
 
-            total_score += score.into();
-        }
+//         Self {
+//             soft_constraints: vec![],
+//             hard_constraints: vec![],
+//             pending_extraction: vec![],
+//             defers: vec![],
+//             context: Context::new(start_page, end_page, defer_flag.clone()),
+//             in_defer: defer_flag,
+//             current_defer: current_defer.clone(),
+//             current_parent: None,
+//             current_page: 0u32.into(),
+//             thread_pool: ThreadPool::new(num_threads, doc_path, current_defer),
+//             objects,
+//         }
+//     }
 
-        total_score
-    }
+//     pub fn begin(&mut self) -> () {
+//         for page in 0..self.context.total_page_count {
+//             info!("Running state machine upon page {}", page);
+//             // i != page_num if start_page > 0
+//             // therefore we add start_page to offset it correctly.
+//             let page = Page::new(page + self.context.start_page.num);
 
-    fn eval_hard_constraints(&self, class: KnownObject) -> bool {
-        for hard in &self.hard_constraints {
-            // we assume any debug tracing happens within .eval()
-            let result = hard.eval(&self.context, class, self.current_page);
+//             if self.in_defer() {
+//                 trace!("Running page {} within deference!", page.num);
+//                 self.iter_with_deference(page);
+//             } else {
+//                 trace!("Running page {} without deference!", page.num);
+//                 self.iter_with_non_deference(page);
+//             }
 
-            if !result {
-                return false;
-            }
-        }
+//             let results = self.thread_pool.poll();
+//             info!("Recieved {} results when polling.", results.len());
+//             self.handle_jobs(results);
+//         }
+//     }
 
-        true
-    }
+//     fn handle_jobs(&mut self, results: Vec<JobResult>) -> () {
+//         for result in results {
+//             match result {
+//                 JobResult::Classification {
+//                     page,
+//                     res,
+//                     as_class,
+//                 } => self.handle_classification_result(page, res, as_class),
+//                 JobResult::Extraction {
+//                     page,
+//                     res,
+//                     as_class,
+//                 } => self.handle_extraction_result(page, res, as_class),
+//             }
+//         }
+//     }
 
-    fn infer(&self, page: Page, avoid_soft: bool) -> Vec<(Score, KnownObject)> {
-        let mut vec = Vec::<(Score, KnownObject)>::with_capacity(OBJECT_COUNT);
+//     fn handle_classification_result(
+//         &mut self,
+//         page: Page,
+//         res: Result<(), String>,
+//         class: KnownObject,
+//     ) -> () {
+//         match res {
+//             Ok(_) => {
+//                 info!(
+//                     "Page {} classified as class {}",
+//                     page.num,
+//                     class.to_string()
+//                 );
+//                 self.context.classify(page, class);
+//             }
+//             Err(e) => {
+//                 warn!(
+//                     "Page {} failed to classify as {}\n With given error string: {}\nEntering deference...",
+//                     page.num,
+//                     class.to_string(),
+//                     e
+//                 );
+//                 self.defer(page);
+//             }
+//         }
+//     }
 
-        for obj_id in 0..OBJECT_COUNT {
-            //  SAFETY:
-            //      We can safely transmute obj_id into KnownObject
-            //      Because the Python side ensures OBJECT_COUNT == the number of variants in Knownobject
-            //      This therefore mitigates any chance of unnecessary branching
-            let class: KnownObject = unsafe { std::mem::transmute(obj_id as u8) };
+//     fn handle_extraction_result(
+//         &mut self,
+//         page: Page,
+//         res: UserResult<()>,
+//         class: KnownObject,
+//     ) -> () {
+//         match res {
+//             UserResult::Ok(_) => {
+//                 // todo: in the future, once we propogate extracted data we should pass it back to Python here.
+//                 info!(
+//                     "Successfully extracted page {} as class {}",
+//                     page.num,
+//                     class.to_string()
+//                 );
+//             }
+//             UserResult::Fail(e) => {
+//                 error!(
+//                     "Page {} classified sucessfully as class {}\nYet failed extraction with error {}!\n**Page will be left as unknown.**",
+//                     page.num,
+//                     class.to_string(),
+//                     e.extract_fail_rsn()
+//                 );
+//                 // todo: logic to leave page {page} as unknown.
+//             }
+//         }
+//     }
 
-            if self.eval_hard_constraints(class) {
-                // arr[obj_id] = (class.into(), 0.0);
-                vec.push((0.0.into(), class));
-            } else {
-                vec.push((Score::NEG_INFINITY(), class.into()));
-                continue;
-            }
+//     fn in_defer(&self) -> bool {
+//         *self.in_defer.as_ref()
+//     }
 
-            if !avoid_soft {
-                vec.push((self.apply_soft_constraints(class, page), class.into()));
-            }
-        }
+//     fn iter_with_deference(&self, page: Page) -> () {
+//         let hypotheses: Vec<ObjectScore> = self
+//             .infer(page, true)
+//             .into_iter()
+//             .filter(|o| self.filter_dependent(o))
+//             .collect();
 
-        vec.sort_unstable_by_key(|f| f.0);
+//         /*
+//             the issue i'm thinking about, is that we're forcing hyptoheses
+//             as single "decisions" within context, as only independents
+//             this is an issue because then we waste resources running inference
+//             while attempting to find the next independent
 
-        vec
-    }
+//         */
+//     }
 
-    // ! I vaguely remember deference ignoring soft constraints, but
-    // ! With a bit of thought it doesn't make too much sense,
-    // ! Since, right now this is unimportant I'll come back to it
-    // /// Identical to [Classifier::infer], but doesn't apply any soft constraints
-    // /// Since, otherwise we'd have to do a flag check which would be overhead in this context
-    // /// (being that inferrence happens O(n) times per page, where n is the number of objects)
-    // /// I assume the maintenence loss makes it worth it
-    // fn infer_within_defer(&self, page: Page) -> KnownObject {
-    //     let mut seen_largest_obj: KnownObject = unsafe { std::mem::transmute(0u8) }; // see safety block below
-    //     let mut seen_largest_score: Score = 0.0;
+//     fn filter_dependent(&self, o: &ObjectScore) -> bool {
+//         is_independent(o.class) && o.score > MIN_DEFER_INDEPENDENCE_SCORE.into()
+//     }
 
-    //     for obj_id in 0..OBJECT_COUNT {
-    //         //  SAFETY:
-    //         //      We can safely transmute obj_id into KnownObject
-    //         //      Because the Python side ensures OBJECT_COUNT == the number of variants in Knownobject
-    //         //      This therefore mitigates any chance of unnecessary branching
-    //         let class: KnownObject = unsafe { std::mem::transmute(obj_id as u8) };
+//     fn iter_with_non_deference(&mut self, page: Page) -> () {
+//         let inferences = self.infer(page, false);
+//         let best_inference = inferences.last().expect("Infer returned an empty Vec!");
 
-    //         if !self.eval_hard_constraints(class) {
-    //             continue; // we do not give any leniancy to objects who don't meet structural constraints
-    //         }
-    //     }
+//         self.context.classify(page, best_inference.class);
+//     }
 
-    //     seen_largest_obj
-    // }
+//     fn apply_soft_constraints(&self, class: KnownObject, page: Page) -> Score {
+//         let mut total_score: Score = 0.0.into();
 
-    /// Indicates that some page was classified incorrectly and caused a break (n)
-    /// Treats n..? as "deferred" where they don't affect the dynamic weights and are hypotheses
-    /// "?" refers to the next independent page (page of an independent type) like another subchapter
-    fn defer(&mut self, page: Page) -> () {
-        self.current_defer = Some(IncompleteDeferBlock::new(
-            page,
-            self.context.total_page_count as usize,
-        ))
-    }
+//         for soft_constraint in &self.soft_constraints {
+//             let score = soft_constraint.eval(&self.context, class, page);
 
-    fn end_defer(&mut self, end_page: Page) -> () {
-        let current_defer = self
-            .current_defer
-            .take()
-            .expect("Attempted to end a defer block without being in a defer block.");
+//             total_score += score.into();
+//         }
 
-        let start_page = current_defer.get_start_page();
+//         total_score
+//     }
 
-        for page in start_page.num..end_page.num {
-            // re-iterate over pages that would have only been hypotheses at this point
-            // todo: run classify over each page in the window, disegard independents since we would have already found them
-        }
+//     fn eval_hard_constraints(&self, class: KnownObject) -> bool {
+//         for hard_constraint in &self.hard_constraints {
+//             // we assume any debug tracing happens within .eval()
+//             let result = hard_constraint.eval(&self.context, class, self.current_page);
 
-        self.defers.push(current_defer.complete(end_page));
-        self.current_defer = None;
-    }
-}
+//             if !result {
+//                 return false;
+//             }
+//         }
+
+//         true
+//     }
+
+//     fn infer(&self, page: Page, avoid_soft: bool) -> Vec<ObjectScore> {
+//         let mut vec = Vec::<ObjectScore>::with_capacity(OBJECT_COUNT);
+
+//         for class in &self.objects {
+//             let class = class.clone();
+
+//             if self.eval_hard_constraints(class) {
+//                 vec.push(ObjectScore::with_float(class, 0.0));
+//             } else {
+//                 vec.push(ObjectScore::with_score(class, Score::NEG_INFINITY()));
+//                 continue;
+//             }
+
+//             if !avoid_soft {
+//                 vec.push(ObjectScore::with_score(
+//                     class,
+//                     self.apply_soft_constraints(class, page),
+//                 ));
+//             }
+//         }
+
+//         vec.sort_unstable_by_key(|f| f.score);
+
+//         vec
+//     }
+
+//     /// Indicates that some page was classified incorrectly and caused a break (n)
+//     /// Treats n..? as "deferred" where they don't affect the dynamic weights and are hypotheses
+//     /// "?" refers to the next independent page (page of an independent type) like another subchapter
+//     fn defer(&mut self, page: Page) -> () {
+//         let mut borrow = self.current_defer.borrow_mut();
+//         *borrow = Some(IncompleteDeferBlock::new(
+//             page,
+//             self.context.total_page_count as usize,
+//         ))
+//     }
+
+//     fn end_defer(&mut self, end_page: Page) -> () {
+//         let current_defer = self
+//             .current_defer
+//             .take()
+//             .expect("Attempted to end a defer block without being in a defer block.");
+
+//         let start_page = current_defer.get_start_page();
+
+//         for page in start_page.num..end_page.num {
+//             // re-iterate over pages that would have only been hypotheses at this point
+//             // todo: run classify over each page in the window, disegard independents since we would have already found them
+//         }
+
+//         self.defers.push(current_defer.complete(end_page));
+//         *self.current_defer.borrow_mut() = None;
+//     }
+// }

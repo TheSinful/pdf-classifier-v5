@@ -1,8 +1,20 @@
-use std::ops::Sub;
+use std::{fmt::Display, ops::Sub};
 
-#[derive(Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
 pub struct Page {
     pub num: u32,
+}
+
+impl Display for Page {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&format!("{}", self.num))
+    }
+}
+
+impl From<usize> for Page {
+    fn from(value: usize) -> Self {
+        Self { num: value as u32 }
+    }
 }
 
 impl From<u32> for Page {
