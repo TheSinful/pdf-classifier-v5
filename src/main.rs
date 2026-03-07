@@ -53,6 +53,7 @@ mod score;
 mod tests;
 mod threading;
 mod weighting;
+mod math;
 
 
 fn main() {}

@@ -3,16 +3,17 @@ use crate::context::Context;
 use crate::generated::generated_object_types::KnownObject;
 use crate::page::Page;
 use crate::score::Score;
+use crate::weighting::constraints::Constraint;
 
 // const NEW_PAIR_REWARD: f32 = 0.0; // ! see PairRewards::eval
 
 pub struct PairRewards;
 
+impl Constraint for PairRewards {}
+
 impl Reward for PairRewards {}
 
 impl SoftConstraint for PairRewards {
-    const REWARD: f32 = 0.5;
-
     fn eval(ctx: &Context, class: KnownObject, page: Page) -> Score {
         // if class.has_pair() && class.is_first_in_pair() {
         //     return NEW_PAIR_REWARD;
@@ -25,9 +26,9 @@ impl SoftConstraint for PairRewards {
         let previous_page_first_in_pair = prev_page.has_pair() && prev_page.is_first_in_pair();
 
         if class.has_pair() && class.is_second_in_pair() && previous_page_first_in_pair {
-            return Self::REWARD.into();
+            return Score::REWARD_Heavy;
         }
 
-        Score::NO_AFFECT()
+        Score::Neutral
     }
 }

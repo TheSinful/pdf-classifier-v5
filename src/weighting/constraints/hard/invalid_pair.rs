@@ -1,7 +1,9 @@
 use super::HardConstraint;
-use crate::{context::Context, generated::reflected_objects, page::Page};
+use crate::{context::Context, generated::reflected_objects, page::Page, weighting::constraints::Constraint};
 
 pub struct ValidPairRule;
+
+impl Constraint for ValidPairRule {}
 
 impl HardConstraint for ValidPairRule {
     fn eval(

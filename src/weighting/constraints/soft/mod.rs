@@ -5,17 +5,15 @@
 // ones which have more importance.
 
 pub mod pair_rewards;
-pub mod root_object;
 pub mod skipped_children;
-
 
 use super::impl_constraint_enum;
 use crate::context::Context;
 use crate::generated::generated_object_types::KnownObject;
 use crate::page::Page;
 use crate::score::Score;
+use crate::weighting::constraints::Constraint;
 use pair_rewards::PairRewards;
-use root_object::RootObjectReward;
 use skipped_children::SkippedChildrenConstraint;
 
 /// Marker trait that indicates self penalizes the returned evaluation
@@ -30,9 +28,7 @@ trait Penalty: SoftConstraint {}
 /// self is going to return a positive float.
 trait Reward: SoftConstraint {}
 
-pub trait SoftConstraint {
-    const REWARD: f32;
-
+pub trait SoftConstraint: Constraint {
     fn eval(ctx: &Context, class: KnownObject, page: Page) -> Score;
 }
 
@@ -40,6 +36,5 @@ impl_constraint_enum!(
     SoftConstraints,
     Score,
     REWARD_PairOrder = PairRewards,
-    REWARD_RootObject = RootObjectReward,
     PENALTY_SkippedChildren = SkippedChildrenConstraint
 );

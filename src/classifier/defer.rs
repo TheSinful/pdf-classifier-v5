@@ -2,7 +2,7 @@ use super::Classifier;
 use super::error::ClassifierError;
 use crate::{
     generated::generated_object_types::KnownObject, page::Page, result_map::ClassifierResultMap,
-    score::Score, weighting::ScoreManager,
+    weighting::ScoreManager,
 };
 
 pub struct DeferenceClassifier {
@@ -25,7 +25,7 @@ impl DeferenceClassifier {
         }
     }
 
-    pub fn finalize(mut self, end_page: Page) -> Result<Classifier, ClassifierError> {
+    pub fn finalize(self, end_page: Page) -> Result<Classifier, ClassifierError> {
         let largest_defer = if self.largest_defer_size > self.current_page.into() {
             self.largest_defer_size
         } else {

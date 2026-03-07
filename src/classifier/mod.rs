@@ -1,11 +1,6 @@
-#![allow(unused)]
-
 use crate::{
-    context::{ContextUpdate, ContextUpdateHistory},
-    generated::generated_object_types::KnownObject,
+    context::ContextUpdateHistory,
     page::Page,
-    result_map::ClassifierResultMap,
-    score::Score,
     weighting::ScoreManager,
 };
 
@@ -16,13 +11,11 @@ use defer::DeferenceClassifier;
 
 type DecisionResult = ();
 
-
 pub struct Classifier {
     pub current_page: Page,
     end_page: Page,
     score_manager: ScoreManager,
     largest_defer_size: usize,
-    
 }
 
 pub struct ClassifcationStep {
@@ -56,7 +49,6 @@ impl Classifier {
 
         self.current_page.num += 1;
 
-
         Ok(ClassifcationStep {
             pages_iterated_over: todo!(),
             context_updates: todo!(),
@@ -78,7 +70,7 @@ impl Classifier {
         None
     }
 
-    pub fn defer(mut self) -> DeferenceClassifier {
+    pub fn defer(self) -> DeferenceClassifier {
         DeferenceClassifier::new(
             self.current_page,
             self.score_manager,
