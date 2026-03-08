@@ -54,6 +54,8 @@ impl KnownObjectList {
             vec.push(obj);
         }
 
+        log::trace!("built candidate list with {} objects", vec.len());
+
         Ok(Self { 0: vec })
     }
 
@@ -66,23 +68,40 @@ impl KnownObjectList {
 
         for def_constraint_discrim in 0..DEFINITIVE_ENUM_VARIANT_COUNT {
             let def_constraint: DefinitiveConstraints = def_constraint_discrim.try_into()?;
-
             let found = self.0.iter().find(|x| def_constraint.eval(ctx, **x, page));
 
             match found {
-                Some(s) => {
-                    result.push(*s);
+                Some(class) => {
+                    log::trace!(
+                        "page {} hit definitive constraint {:?}, winner is {}",
+                        page,
+                        def_constraint,
+                        class.to_string()
+                    );
+                    result.push(*class);
                     return Ok(Self { 0: result });
                 }
-                None => continue,
+                None => {
+                    log::trace!(
+                        "page {} no match on definitive constraint {:?}",
+                        page,
+                        def_constraint
+                    );
+                    continue;
+                }
             }
         }
 
+        log::trace!(
+            "page {} passed all definitive constraints with no match, returning full candidate list",
+            page
+        );
         Ok(Self { 0: self.0 })
     }
 
     pub fn filter_by_hard_constraints(self, ctx: &Context, page: Page) -> ScoreManagerResult<Self> {
         let mut result = Vec::new();
+        let before = self.0.len();
 
         for hard_constraint in 0..HARD_ENUM_VARIANT_COUNT {
             let constraint: HardConstraints = hard_constraint.try_into()?;
@@ -93,15 +112,25 @@ impl KnownObjectList {
                 .filter(|x| constraint.eval(ctx, **x, page))
                 .cloned()
                 .collect::<Vec<KnownObject>>();
+
+            log::trace!(
+                "page {} after hard constraint {:?}: {} candidates remaining",
+                page,
+                constraint,
+                result.len()
+            );
         }
 
+        log::trace!(
+            "page {} hard filtering done, {} -> {} candidates",
+            page,
+            before,
+            result.len()
+        );
         Ok(Self { 0: result })
     }
 
     pub fn sort_by_soft_constraints(self, ctx: &Context, page: Page) -> ScoreManagerResult<Self> {
-        // todo: can be optimized by using a sized array, initialized values (regarding scores) are always (class_discrim, vec::with_capacity(OBJECT_COUNT))
-        // todo: will avoid iterating over each discrim, since we can guarantee "i" will always equal a class_discrim aslong as we iterate over 0..OBJECT_COUNT.
-
         fn eval_class(
             ctx: &Context,
             class: KnownObject,
@@ -110,12 +139,19 @@ impl KnownObjectList {
             scores: &mut Vec<(KnownObject, Vec<Score>)>,
         ) -> ScoreManagerResult<()> {
             let score = constraint.eval(ctx, class, page);
+            log::trace!(
+                "page {} class {} scored {:?} on soft constraint {:?}",
+                page,
+                class.to_string(),
+                score,
+                constraint
+            );
+
             let position = scores.iter().position(|x| x.0 == class).ok_or({
                 ScoreManagerError::ScoreMapMissingConstraint(class.to_string(), constraint)
             })?;
 
             scores[position].1.push(score);
-
             Ok(())
         }
 
@@ -136,6 +172,12 @@ impl KnownObjectList {
         scores.iter_mut().for_each(|x| x.1.sort_by(|x, y| x.cmp(y)));
         scores.sort_by(|x, y| x.1.last().unwrap().cmp(y.1.last().unwrap()));
 
+        log::trace!(
+            "page {} soft sort complete, top candidate is {}",
+            page,
+            scores.last().unwrap().0.to_string()
+        );
+
         Ok(self)
     }
 }
@@ -154,13 +196,26 @@ impl ScoreManager {
         pages: Vec<Page>,
     ) -> ScoreManagerResult<()> {
         for page in pages {
+            log::trace!("beginning inference on page {}", page);
+
             let candidates = KnownObjectList::new()?.filter_by_definitive_constraints(ctx, page)?;
 
             if candidates.0.len() == 1 {
-                // definitive constraint ensures only a single class is true so we return early
-                ctx.decide(page, *candidates.0.last().unwrap(), history)?;
+                let winner = *candidates.0.last().unwrap();
+                log::trace!(
+                    "page {} resolved early via definitive constraint as {}",
+                    page,
+                    winner.to_string()
+                );
+                ctx.decide(page, winner, history)?;
                 continue;
             }
+
+            log::trace!(
+                "page {} proceeding to hard + soft filtering with {} candidates",
+                page,
+                candidates.0.len()
+            );
 
             let candidates = candidates
                 .filter_by_hard_constraints(ctx, page)?
@@ -168,7 +223,9 @@ impl ScoreManager {
 
             // todo: apply dynamic weighting here or maybe take an arg in "sort" to do so
 
-            ctx.decide(page, *candidates.0.last().unwrap(), history)?
+            let winner = *candidates.0.last().unwrap();
+            log::trace!("page {} final inference: {}", page, winner.to_string());
+            ctx.decide(page, winner, history)?
         }
 
         Ok(())

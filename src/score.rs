@@ -1,12 +1,13 @@
 use std::{
     f32,
+    fmt::Display,
     ops::{Add, Sub},
 };
 
 // I chose to prefix with P and N for positive/negative since
 // the only other visual difference is in the "un" prefix later in the name
 #[allow(non_camel_case_types)]
-#[derive(PartialEq, PartialOrd, Default, Clone, Copy)]
+#[derive(PartialEq, PartialOrd, Default, Clone, Copy, Debug)]
 pub enum Score {
     REWARD_Heavy, // 1.0
     REWARD_Light, // 0.5
@@ -15,6 +16,12 @@ pub enum Score {
     PUNISHMENT_Light, // -0.5
     PUNISHMENT_Heavy, // -0.0
     Custom(f32),  // [-1.0, 1.0]
+}
+
+impl Display for Score {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.into_f32())
+    }
 }
 
 impl From<f32> for Score {
