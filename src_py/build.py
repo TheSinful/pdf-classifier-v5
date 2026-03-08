@@ -138,7 +138,7 @@ pub const fn is_pair(o1: KnownObject, o2: KnownObject) -> bool {{
 
 #[inline]
 pub fn is_root(obj: KnownObject) -> bool {{
-    VALID_PARENTS[idx(obj)] == [{", ".join(["false"] * len(OBJECTS))}]
+    obj == OBJECTS[0].name
 }}
 
 #[inline]
