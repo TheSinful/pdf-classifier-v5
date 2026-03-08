@@ -1,34 +1,16 @@
-use crate::context::ContextUpdate;
 use crate::generated::generated_object_types::ObjectCastError;
 use crate::score::Score;
-use crate::weighting::constraints::{HARD_ENUM_VARIANT_COUNT, HardConstraints};
+use crate::weighting::constraints::{
+    DEFINITIVE_ENUM_VARIANT_COUNT, DefinitiveConstraints, HARD_ENUM_VARIANT_COUNT, HardConstraints,
+};
 use crate::{
     context::{Context, ContextUpdateHistory},
     generated::generated_object_types::{KnownObject, OBJECT_COUNT},
     page::Page,
     weighting::constraints::{SOFT_ENUM_VARIANT_COUNT, SoftConstraints},
 };
-use eq_float::F32 as HashableF32;
-use std::{collections::HashMap, rc::Rc};
 
 mod constraints;
-
-#[derive(Hash)]
-pub struct Weight {
-    value: HashableF32,
-    constraint: SoftConstraints,
-    changes: Vec<String>,
-}
-
-impl Weight {
-    pub fn new(for_constraint: SoftConstraints) -> Self {
-        Self {
-            value: 0.0.into(),
-            constraint: for_constraint,
-            changes: Vec::new(),
-        }
-    }
-}
 
 #[derive(thiserror::Error, Debug)]
 pub enum ScoreManagerError {
@@ -50,41 +32,12 @@ pub enum ScoreManagerError {
         "Attempted to score on class {0} with SoftConstriant {1}, yet no constraint was stored in score map."
     )]
     ScoreMapMissingConstraint(String, SoftConstraints),
+
+    #[error(transparent)]
+    ContextError(#[from] crate::context::ContextError),
 }
 
 type ScoreManagerResult<T> = std::result::Result<T, ScoreManagerError>;
-type WeightList = Vec<Weight>;
-
-struct ConstraintList(HashMap<KnownObject, WeightList>);
-
-impl ConstraintList {
-    pub fn new() -> ScoreManagerResult<Self> {
-        let mut coll = HashMap::new();
-
-        for class_discrim in 0..OBJECT_COUNT {
-            let class: KnownObject = class_discrim.try_into()?;
-
-            let mut weights = Vec::new();
-
-            for weight_type in 0..SOFT_ENUM_VARIANT_COUNT {
-                let constraint = weight_type.try_into()?;
-
-                weights.push(Weight::new(constraint));
-            }
-
-            coll.insert(class, weights);
-        }
-
-        Ok(Self { 0: coll })
-    }
-
-    pub fn weights(&mut self, class: &KnownObject) -> ScoreManagerResult<&mut WeightList> {
-        match self.0.get_mut(class) {
-            Some(s) => Ok(s),
-            None => Err(ScoreManagerError::FailedToLocateWeights(class.to_string())),
-        }
-    }
-}
 
 pub struct InferenceResult {
     candidates: Vec<KnownObject>,
@@ -93,15 +46,42 @@ pub struct InferenceResult {
 struct KnownObjectList(pub Vec<KnownObject>);
 
 impl KnownObjectList {
-    pub fn new(v: Vec<KnownObject>) -> Self {
-        Self { 0: v }
+    pub fn new() -> ScoreManagerResult<Self> {
+        let mut vec: Vec<KnownObject> = vec![];
+
+        for discrim in 0..OBJECT_COUNT {
+            let obj = KnownObject::try_from(discrim)?;
+            vec.push(obj);
+        }
+
+        Ok(Self { 0: vec })
     }
 
-    pub fn filter_by_hard_constraints(
-        &self,
+    pub fn filter_by_definitive_constraints(
+        self,
         ctx: &Context,
         page: Page,
     ) -> ScoreManagerResult<Self> {
+        let mut result = Vec::with_capacity(1);
+
+        for def_constraint_discrim in 0..DEFINITIVE_ENUM_VARIANT_COUNT {
+            let def_constraint: DefinitiveConstraints = def_constraint_discrim.try_into()?;
+
+            let found = self.0.iter().find(|x| def_constraint.eval(ctx, **x, page));
+
+            match found {
+                Some(s) => {
+                    result.push(*s);
+                    return Ok(Self { 0: result });
+                }
+                None => continue,
+            }
+        }
+
+        Ok(Self { 0: self.0 })
+    }
+
+    pub fn filter_by_hard_constraints(self, ctx: &Context, page: Page) -> ScoreManagerResult<Self> {
         let mut result = Vec::new();
 
         for hard_constraint in 0..HARD_ENUM_VARIANT_COUNT {
@@ -118,29 +98,33 @@ impl KnownObjectList {
         Ok(Self { 0: result })
     }
 
-    pub fn sort_by_soft_constraints(
-        &mut self,
-        ctx: &Context,
-        page: Page,
-    ) -> ScoreManagerResult<()> {
+    pub fn sort_by_soft_constraints(self, ctx: &Context, page: Page) -> ScoreManagerResult<Self> {
+        // todo: can be optimized by using a sized array, initialized values (regarding scores) are always (class_discrim, vec::with_capacity(OBJECT_COUNT))
+        // todo: will avoid iterating over each discrim, since we can guarantee "i" will always equal a class_discrim aslong as we iterate over 0..OBJECT_COUNT.
+
         fn eval_class(
             ctx: &Context,
             class: KnownObject,
             page: Page,
             constraint: SoftConstraints,
-            collection: &mut Vec<(KnownObject, Vec<Score>)>,
+            scores: &mut Vec<(KnownObject, Vec<Score>)>,
         ) -> ScoreManagerResult<()> {
             let score = constraint.eval(ctx, class, page);
-            let position = collection.iter().position(|x| x.0 == class).ok_or({
+            let position = scores.iter().position(|x| x.0 == class).ok_or({
                 ScoreManagerError::ScoreMapMissingConstraint(class.to_string(), constraint)
             })?;
 
-            collection[position].1.push(score);
+            scores[position].1.push(score);
 
             Ok(())
         }
 
-        let mut scores: Vec<(KnownObject, Vec<Score>)> = Vec::new();
+        let mut scores: Vec<(KnownObject, Vec<Score>)> = Vec::with_capacity(OBJECT_COUNT as usize);
+        for i in 0..OBJECT_COUNT {
+            scores[i as usize].0 = i.try_into()?;
+            scores[i as usize].1 = Vec::with_capacity(SOFT_ENUM_VARIANT_COUNT as usize);
+        }
+
         for soft_constraint_idx in 0..SOFT_ENUM_VARIANT_COUNT {
             let soft_constraint: SoftConstraints = soft_constraint_idx.try_into()?;
 
@@ -149,60 +133,70 @@ impl KnownObjectList {
                 .try_for_each(|x| eval_class(ctx, *x, page, soft_constraint, &mut scores))?;
         }
 
-        todo!()
+        scores.iter_mut().for_each(|x| x.1.sort_by(|x, y| x.cmp(y)));
+        scores.sort_by(|x, y| x.1.last().unwrap().cmp(y.1.last().unwrap()));
+
+        Ok(self)
     }
 }
 
-pub struct ScoreManager {
-    weighted_constraints: ConstraintList,
-    ctx: Rc<Context>,
-    all_candidates: KnownObjectList,
-}
+pub struct ScoreManager;
 
 impl ScoreManager {
-    pub fn new(ctx: Rc<Context>) -> ScoreManagerResult<Self> {
-        let all_candidates = {
-            let mut result = Vec::new();
+    pub fn new() -> Self {
+        Self {}
+    }
 
-            for class in 0..OBJECT_COUNT {
-                let class: KnownObject = class.try_into()?;
+    pub fn step(
+        &mut self,
+        history: &mut ContextUpdateHistory,
+        ctx: &mut Context,
+        pages: Vec<Page>,
+    ) -> ScoreManagerResult<()> {
+        for page in pages {
+            let candidates = KnownObjectList::new()?.filter_by_definitive_constraints(ctx, page)?;
 
-                result.push(class);
+            if candidates.0.len() == 1 {
+                // definitive constraint ensures only a single class is true so we return early
+                ctx.decide(page, *candidates.0.last().unwrap(), history)?;
+                continue;
             }
 
-            result
-        };
+            let candidates = candidates
+                .filter_by_hard_constraints(ctx, page)?
+                .sort_by_soft_constraints(ctx, page)?;
 
-        Ok(Self {
-            weighted_constraints: ConstraintList::new()?,
-            ctx,
-            all_candidates: KnownObjectList::new(all_candidates),
-        })
-    }
+            // todo: apply dynamic weighting here or maybe take an arg in "sort" to do so
 
-    pub fn infer(&self, ctx: &Context, page: Page) -> ScoreManagerResult<InferenceResult> {
-        let valid_candidates = self.all_candidates.filter_by_hard_constraints(ctx, page)?;
-
-        todo!()
-    }
-
-    pub fn step(&mut self, history: &mut ContextUpdateHistory) -> ScoreManagerResult<()> {
-        // history provides us the classification/inference knowledge between each step
-        // so, we can now mutate our weights based off changes in said history
-
-        for update in history {
-            match update {
-                ContextUpdate::Decision(page, class) => self.handle_decision(page, class)?,
-                ContextUpdate::NewParent(_) => todo!(),
-            };
+            ctx.decide(page, *candidates.0.last().unwrap(), history)?
         }
 
         Ok(())
     }
 
-    fn handle_decision(&mut self, page: &Page, for_class: &KnownObject) -> ScoreManagerResult<()> {
-        let weights = self.weighted_constraints.weights(for_class)?;
+    // fn handle_decision(&mut self, page: &Page, for_class: &KnownObject) -> ScoreManagerResult<()> {
+    //     Ok(())
+    // }
+}
 
-        Ok(())
+#[cfg(test)]
+mod tests {
+    use crate::{
+        context::{Context, ContextUpdateHistory},
+        weighting::ScoreManager,
+    };
+
+    #[test]
+    pub fn test_score_manage_step() {
+        let mut manager = ScoreManager::new();
+        let mut mock_history = ContextUpdateHistory::new();
+        let mut ctx = Context::new(10, 0u32.into(), 9u32.into());
+        let mut pages = Vec::new();
+        pages.push(0u32.into());
+
+        match manager.step(&mut mock_history, &mut ctx, pages) {
+            Ok(_) => {}
+            Err(e) => panic!("{}", e),
+        }
     }
 }

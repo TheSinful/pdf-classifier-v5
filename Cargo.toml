@@ -5,7 +5,6 @@ edition = "2024"
 
 [dependencies]
 cxx = "1.0.192"
-eq-float = "0.1.0"
 futures = "0.3.31"
 log = "0.4.29"
 thiserror = "2.0.17"

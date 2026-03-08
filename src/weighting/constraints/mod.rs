@@ -6,6 +6,8 @@ pub use hard::ENUM_VARIANT_COUNT as HARD_ENUM_VARIANT_COUNT;
 pub use hard::HardConstraints;
 pub use soft::ENUM_VARIANT_COUNT as SOFT_ENUM_VARIANT_COUNT;
 pub use soft::SoftConstraints;
+pub use definitive::ENUM_VARIANT_COUNT as DEFINITIVE_ENUM_VARIANT_COUNT; 
+pub use definitive::DefinitiveConstraints;
 
 pub trait Constraint {}
 

@@ -11,10 +11,6 @@ impl Constraint for FirstPageRoot {}
 
 impl DefinitiveConstraint for FirstPageRoot {
     fn eval(ctx: &Context, class: KnownObject, page: Page) -> bool {
-        if ctx.is_first_page(page) && is_root(class) {
-            true
-        } else {
-            false
-        }
+        ctx.is_first_page(page) && is_root(class)
     }
 }

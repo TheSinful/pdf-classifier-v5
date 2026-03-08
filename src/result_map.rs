@@ -2,7 +2,7 @@ use crate::page::Page;
 use std::ops::{Index, IndexMut};
 
 #[derive(Clone)]
-/// 3D vec which maps page numbers to a list of T 
+/// 2D vec which maps page numbers to a list of T 
 pub struct ClassifierResultMap<T> {
     /// Equivalent to a key-value structure because:
     /// page_num == i (when i is an index of inner)
