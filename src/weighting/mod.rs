@@ -194,7 +194,10 @@ impl ScoreManager {
         history: &mut ContextUpdateHistory,
         ctx: &mut Context,
         pages: Vec<Page>,
-    ) -> ScoreManagerResult<()> {
+    ) -> ScoreManagerResult<Vec<KnownObject>> {
+        let mut winners: Vec<KnownObject> = vec![];
+        let total_pages = pages.len();
+
         for page in pages {
             log::trace!("beginning inference on page {}", page);
 
@@ -207,7 +210,9 @@ impl ScoreManager {
                     page,
                     winner.to_string()
                 );
-                ctx.decide(page, winner, history)?;
+
+                self.decide(ctx, winner, &mut winners, page, history)?;
+
                 continue;
             }
 
@@ -225,8 +230,30 @@ impl ScoreManager {
 
             let winner = *candidates.0.last().unwrap();
             log::trace!("page {} final inference: {}", page, winner.to_string());
-            ctx.decide(page, winner, history)?
+
+            self.decide(ctx, winner, &mut winners, page, history)?;
         }
+
+        log::trace!(
+            "done stepping over {} page(s), with {} winner(s)",
+            total_pages,
+            winners.len()
+        );
+
+        Ok(winners)
+    }
+
+    /// Wraps ctx.decide, aswell as pushing into a winners vec.
+    fn decide(
+        &self,
+        ctx: &mut Context,
+        winner: KnownObject,
+        winners: &mut Vec<KnownObject>,
+        page: Page,
+        history: &mut ContextUpdateHistory,
+    ) -> ScoreManagerResult<()> {
+        ctx.decide(page, winner, history)?;
+        winners.push(winner);
 
         Ok(())
     }
@@ -240,11 +267,14 @@ impl ScoreManager {
 mod tests {
     use crate::{
         context::{Context, ContextUpdateHistory},
+        generated::generated_object_types::KnownObject,
         weighting::ScoreManager,
     };
 
     #[test]
     pub fn test_score_manage_step() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
         let mut manager = ScoreManager::new();
         let mut mock_history = ContextUpdateHistory::new();
         let mut ctx = Context::new(10, 0u32.into(), 9u32.into());
@@ -252,7 +282,14 @@ mod tests {
         pages.push(0u32.into());
 
         match manager.step(&mut mock_history, &mut ctx, pages) {
-            Ok(_) => {}
+            Ok(r) => {
+                assert!(
+                    r.len() == 1,
+                    "Should've gotten one winner but got {}",
+                    r.len()
+                );
+                assert!(*r.last().unwrap() == KnownObject::CHAPTER); // TODO! need something to force the example project for cfg(test) otherwise this will fail compilation.
+            }
             Err(e) => panic!("{}", e),
         }
     }
