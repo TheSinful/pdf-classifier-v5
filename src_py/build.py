@@ -306,7 +306,7 @@ impl TryFrom<u8> for KnownObject {{
     type Error = ObjectCastError;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {{
-        if value > OBJECT_COUNT as usize {{
+        if value > OBJECT_COUNT {{
             return Err(ObjectCastError::UIntCastError(value));
         }}
 
@@ -613,7 +613,7 @@ impl Into<u8> for KnownObject {{
             lines.append(f"    {val_str}, // {obj_name}")
         
         all_lines = "\n".join(lines)
-        return f"const {array_name}: [bool; OBJECT_COUNT as u8] = [\n{all_lines}\n];"
+        return f"const {array_name}: [bool; OBJECT_COUNT as usize] = [\n{all_lines}\n];"
     
     def _format_matrix_rows(self, matrix: list[list[bool]], matrix_name: str) -> str:
         """Format a boolean matrix as Rust constant declaration"""
