@@ -2,25 +2,25 @@ use super::Classifier;
 use super::error::ClassifierError;
 use crate::{
     generated::generated_object_types::KnownObject, page::Page, result_map::ClassifierResultMap,
-    weighting::ScoreManager,
+    inferencer::Inferencer,
 };
 
 pub struct DeferenceClassifier {
     hypotheses: ClassifierResultMap<KnownObject>,
     start_page: Page,
     current_page: Page,
-    score_manager: ScoreManager,
+    inferencer: Inferencer,
     largest_defer_size: usize,
 }
 
 impl DeferenceClassifier {
     /// avg_hypotheses_size will refer to the average number of pages in a deference block.
-    pub fn new(current_page: Page, score_manager: ScoreManager, largest_defer_size: usize) -> Self {
+    pub fn new(current_page: Page, inferencer: Inferencer, largest_defer_size: usize) -> Self {
         Self {
             hypotheses: ClassifierResultMap::with_capacity(largest_defer_size), // will be dropped on end_defer
             start_page: current_page,
             current_page,
-            score_manager,
+            inferencer,
             largest_defer_size,
         }
     }
@@ -35,7 +35,7 @@ impl DeferenceClassifier {
         Ok(Classifier::new(
             self.current_page,
             end_page,
-            self.score_manager,
+            self.inferencer,
             self.largest_defer_size,
         ))
     }
