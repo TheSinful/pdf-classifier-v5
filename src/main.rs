@@ -53,7 +53,16 @@ mod score;
 mod tests;
 mod threading;
 mod weighting;
-mod math;
+mod obj_list;
+mod inferencer;
 
+#[cfg(test)]
+#[ctor::ctor]
+fn init_tests() {
+    env_logger::builder()
+        .filter_level(log::LevelFilter::Trace)
+        .is_test(true)
+        .init();
+}
 
 fn main() {}

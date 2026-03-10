@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+ctor = "0.6.3"
 cxx = "1.0.192"
 env_logger = "0.11.9"
 futures = "0.3.31"
