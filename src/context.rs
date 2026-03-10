@@ -1,5 +1,8 @@
 use crate::{
-    generated::{generated_object_types::{KnownObject, OBJECT_COUNT, ObjectCastError}, reflected_objects::OBJECTS},
+    generated::{
+        generated_object_types::{KnownObject, OBJECT_COUNT, ObjectCastError},
+        reflected_objects::OBJECTS,
+    },
     page::Page,
     result_map::ClassifierResultMap,
 };
@@ -28,13 +31,13 @@ pub enum ContextError {
 pub type ContextUpdateHistory = Vec<ContextUpdate>;
 
 impl Context {
-    pub fn new(page_count: usize, start_page: Page, end_page: Page) -> Self {
+    pub fn new(start_page: Page, end_page: Page) -> Self {
         Self {
             pages: HashMap::new(),
-            page_count,
+            page_count: (end_page.num - start_page.num) as usize,
             start_page,
             end_page,
-            current_parent: OBJECTS[0].name, 
+            current_parent: OBJECTS[0].name,
             prev_parents: ClassifierResultMap::with_capacity(OBJECT_COUNT as usize),
         }
     }
@@ -63,11 +66,12 @@ impl Context {
 
         difference_history.push(ContextUpdate::Decision(page, class));
 
-        // todo: need fallback to ensure that if on this decision we're incorrect, that we can revert correctly.
-        let current_discrim: u8 = class.into();
-        if self.is_first_page(page) { 
+        if self.is_first_page(page) {
             return Ok(());
         }
+
+        // todo: need fallback to ensure that if on this decision we're incorrect, that we can revert correctly.
+        let current_discrim: u8 = class.into();
 
         let current_parent = self.current_parent;
         let parent_discrim: u8 = current_parent.into();
