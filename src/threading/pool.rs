@@ -45,10 +45,7 @@ pub enum JobResult {
 }
 
 impl ThreadPool {
-    pub fn new(
-        num_threads: usize,
-        doc_path: PathBuf,
-    ) -> Self {
+    pub fn new(num_threads: usize, doc_path: PathBuf) -> Self {
         let mut available_workers = Vec::new();
 
         for i in 0..num_threads {
@@ -66,7 +63,7 @@ impl ThreadPool {
         }
     }
 
-    pub fn poll(&mut self) -> Vec<JobResult> {
+    pub fn poll(&mut self) -> Option<Vec<JobResult>> {
         let mut cx = Context::from_waker(noop_waker_ref());
         let mut results: Vec<JobResult> = vec![];
 
@@ -86,7 +83,15 @@ impl ThreadPool {
             self.push_worker_to_available(fut.worker_id);
         }
 
-        results
+        if self.exhausted(&results) {
+            None
+        } else {
+            Some(results)
+        }
+    }
+
+    fn exhausted(&self, results: &Vec<JobResult>) -> bool {
+        self.queue.is_empty() && results.is_empty() && self.busy_workers.is_empty()
     }
 
     fn work_available_worker(&mut self, worker: WorkerThread) -> Option<()> {
