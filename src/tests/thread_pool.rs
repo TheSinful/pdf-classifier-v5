@@ -1,10 +1,10 @@
+use crate::generated::generated_object_types::KnownObject;
+use crate::tests::init::get_SMALL_TEST_DOC_test_path;
 use crate::threading::pool::*;
-use crate::{generated::generated_object_types::KnownObject};
-use super::util::get_test_doc_path;
 
 #[test]
 fn test_poll() {
-    let mut pool = ThreadPool::new(4, get_test_doc_path());
+    let mut pool = ThreadPool::new(4, get_SMALL_TEST_DOC_test_path());
     pool.schedule(KnownObject::CHAPTER, 0u32.into());
 
     let mut _prev = 0;
@@ -12,7 +12,7 @@ fn test_poll() {
     loop {
         _prev += 3;
 
-        let mut results = pool.poll();
+        let mut results = pool.poll().expect("thread pool shouldn't be exhausted");
 
         if results.is_empty() {
             continue; // awaiting  

@@ -1,6 +1,6 @@
+use super::init::get_SMALL_TEST_DOC_test_path as get_test_doc_path;
 use crate::ffi::UserResult;
 use crate::generated::generated_object_types::KnownObject;
-use super::util::get_test_doc_path;
 use crate::threading::*;
 
 #[tokio::test]

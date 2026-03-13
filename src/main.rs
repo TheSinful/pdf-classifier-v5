@@ -46,23 +46,18 @@ mod classifier;
 mod context;
 mod ffi;
 mod generated;
+mod inferencer;
+mod macros;
+mod obj_list;
 mod page;
 mod result_map;
 mod score;
 #[cfg(test)]
 mod tests;
+
 mod threading;
 mod weighting;
-mod obj_list;
-mod inferencer;
 
-#[cfg(test)]
-#[ctor::ctor]
-fn init_tests() {
-    env_logger::builder()
-        .filter_level(log::LevelFilter::Trace)
-        .is_test(true)
-        .init();
-}
+
 
 fn main() {}
