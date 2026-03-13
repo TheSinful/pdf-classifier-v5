@@ -1,8 +1,8 @@
-use super::Classifier;
-use super::error::ClassifierError;
+// use super::Classifier;
+// use super::error::ClassifierError;
 use crate::{
-    generated::generated_object_types::KnownObject, page::Page, result_map::ClassifierResultMap,
-    inferencer::Inferencer,
+    generated::generated_object_types::KnownObject, inferencer::Inferencer, page::Page,
+    result_map::ClassifierResultMap,
 };
 
 pub struct DeferenceClassifier {
@@ -25,18 +25,18 @@ impl DeferenceClassifier {
         }
     }
 
-    pub fn finalize(self, end_page: Page) -> Result<Classifier, ClassifierError> {
-        let largest_defer = if self.largest_defer_size > self.current_page.into() {
-            self.largest_defer_size
-        } else {
-            self.current_page.into()
-        };
+    // pub fn finalize(self, end_page: Page) -> Result<Classifier, ClassifierError> {
+    //     let largest_defer = if self.largest_defer_size > self.current_page.into() {
+    //         self.largest_defer_size
+    //     } else {
+    //         self.current_page.into()
+    //     };
 
-        Ok(Classifier::new(
-            self.current_page,
-            end_page,
-            self.inferencer,
-            self.largest_defer_size,
-        ))
-    }
+    //     Ok(Classifier::new(
+    //         self.current_page,
+    //         end_page,
+    //         self.inferencer,
+    //         largest_defer,
+    //     ))
+    // }
 }
