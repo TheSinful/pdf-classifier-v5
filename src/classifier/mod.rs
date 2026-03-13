@@ -87,15 +87,11 @@ impl Classifier {
 
         let winners = self.inferencer.infer(ctx, vec![self.current_page])?;
 
-        #[cfg(debug_assertions)]
-        if STEP_COUNT == 1 {
-            // slightly over-engineered/future proofed, but ensures this won't be an issue if step_count is changed.
-            debug_assert_eq!(
-                winners.len(),
-                1,
-                "Should've only received one winner from ScoreManager while stepping sequentially."
-            );
-        }
+        debug_assert_if!(
+            STEP_COUNT == 1,
+            winners.len() == 1,
+            "Should've only received one winner from Inferencer while stepping sequentially."
+        );
 
         ctx.decide(self.current_page, winners[0], &mut history)?;
         self.current_page.num += STEP_COUNT as u32;
