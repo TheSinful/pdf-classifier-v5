@@ -1,6 +1,6 @@
 from pathlib import Path
 from weakref import ref
-from pdf_classifier_build.src.pdf_classifier.rust_class_serializer import RustClassSerializer
+from pdf_classifier.rust_class_serializer import RustClassSerializer
 from pdf_classifier.object import Object
 import pytest
 import tempfile

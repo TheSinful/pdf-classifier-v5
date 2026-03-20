@@ -171,12 +171,16 @@ class HierarchySerializer(Serializer):
         
         obj_to_idx = {obj.name: i for i, obj in enumerate(self.objects)}
         
-        def traverse(obj):
+        def traverse(obj: Object):
             if hasattr(obj, 'pair') and obj.pair:
                 obj_idx = obj_to_idx[obj.name]
                 # Find the pair object by name
+                obj_pair = obj.pair[0]()
+                if obj_pair is None: 
+                    raise RuntimeError("Attempted to dereference on a pair object that doesn't exist!")
+                
                 for other_obj in self.objects:
-                    if other_obj.name == obj.pair:
+                    if other_obj.name == obj_pair.name:
                         other_idx = obj_to_idx[other_obj.name]
                         matrix[obj_idx][other_idx] = True
                         break
@@ -185,9 +189,9 @@ class HierarchySerializer(Serializer):
                 for child in obj.children:
                     deref_child = child() 
                     if deref_child is None: 
-                        raise RuntimeError("Attempted to ")
+                        raise RuntimeError("Attempted to dereference on a child that doesn't exist!")
                             
-                    traverse(child)
+                    traverse(deref_child)
         
         traverse(self.objects[1])
         return matrix

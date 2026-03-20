@@ -7,3 +7,7 @@ dependencies = ["cmake>=4.2.0"]
 
 [project.optional-dependencies]
 dev = ["pytest>=9.0.2"]
+
+[tool.pytest.ini_options]
+testpaths = ["src/pdf_classifier/tests"]
+python_files = ["*_tests.py", "test_*.py"]
