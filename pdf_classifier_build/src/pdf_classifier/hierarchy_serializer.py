@@ -157,7 +157,7 @@ class HierarchySerializer(Serializer):
                 for child in obj.children:
                     deref_child = child() 
                     if deref_child is None: 
-                        raise RuntimeError("Attempted to ")
+                        raise RuntimeError("Attempted to dereference a child object that doesn't exist!")
                     
                     traverse(deref_child, obj_idx)
         
