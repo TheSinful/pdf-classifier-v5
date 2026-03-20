@@ -75,15 +75,15 @@ class RustClassSerializer(Serializer):
         """)
         
     def _obj_cast_err_enum(self) -> None: 
-        self.data += textwrap.dedent("""
+        self.data += textwrap.dedent(f"""
             #[derive(thiserror::Error, Debug)]
             pub enum ObjectCastError {{
                 #[error(
-                    "Attempted to cast {{0}} into a {self.enum_name}, but no object corresponds with said string!"
+                    "Attempted to cast {{{{0}}}} into a {self.enum_name}, but no object corresponds with said string!"
                 )]
                 StringCastError(String),
 
-                #[error("Attempted to cast {{0}} into a {self.enum_name}, but no object holds said discriminant!")]
+                #[error("Attempted to cast {{{{0}}}} into a {self.enum_name}, but no object holds said discriminant!")]
                 UIntCastError(u8),
             }}
         """)

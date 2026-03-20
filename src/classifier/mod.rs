@@ -18,7 +18,7 @@ pub struct Classifier {
     largest_defer_size: usize,
 }
 
-pub struct ClassifcationStep {
+pub struct ClassificationStep {
     pages_iterated_over: usize,
     context_updates: ContextUpdateHistory,
     notes: String,
@@ -48,7 +48,7 @@ impl Classifier {
         }
     }
 
-    pub fn start(&mut self) -> Result<Vec<ClassifcationStep>, ClassificationError> {
+    pub fn start(&mut self) -> Result<Vec<ClassificationStep>, ClassificationError> {
         let mut steps = vec![];
         let mut ctx = Context::new(self.current_page, self.end_page);
         log::trace!(
@@ -69,11 +69,11 @@ impl Classifier {
         Ok(steps)
     }
 
-    fn step(&mut self, ctx: &mut Context) -> Result<ClassifcationStep, ClassificationError> {
+    fn step(&mut self, ctx: &mut Context) -> Result<ClassificationStep, ClassificationError> {
         const STEP_COUNT: usize = 1;
 
         if self.current_page.num >= self.end_page.num {
-            return Ok(ClassifcationStep {
+            return Ok(ClassificationStep {
                 pages_iterated_over: 0,
                 context_updates: vec![],
                 notes: format!(
@@ -96,7 +96,7 @@ impl Classifier {
         ctx.decide(self.current_page, winners[0], &mut history)?;
         self.current_page.num += STEP_COUNT as u32;
 
-        Ok(ClassifcationStep {
+        Ok(ClassificationStep {
             context_updates: history,
             notes: "".to_string(),
             pages_iterated_over: STEP_COUNT,

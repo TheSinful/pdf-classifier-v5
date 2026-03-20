@@ -15,6 +15,10 @@ impl Reward for PairRewards {}
 
 impl SoftConstraint for PairRewards {
     fn eval(ctx: &Context, class: KnownObject, page: Page) -> Score {
+        if ctx.is_first_page(page) {
+            return Score::Neutral;
+        }
+
         // if class.has_pair() && class.is_first_in_pair() {
         //     return NEW_PAIR_REWARD;
         // }

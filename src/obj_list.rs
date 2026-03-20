@@ -68,14 +68,13 @@ impl KnownObjectList {
     }
 
     pub fn filter_by_hard_constraints(self, ctx: &Context, page: Page) -> InferenceResult<Self> {
-        let mut result = Vec::new();
         let before = self.0.len();
+        let mut result = self.0;
 
         for hard_constraint in 0..HARD_ENUM_VARIANT_COUNT {
             let constraint: HardConstraints = hard_constraint.try_into()?;
 
-            result = self
-                .0
+            result = result
                 .iter()
                 .filter(|x| constraint.eval(ctx, **x, page))
                 .cloned()
@@ -123,11 +122,12 @@ impl KnownObjectList {
             Ok(())
         }
 
-        let mut scores: Vec<(KnownObject, Vec<Score>)> = Vec::with_capacity(OBJECT_COUNT as usize);
-        for i in 0..OBJECT_COUNT {
-            scores[i as usize].0 = i.try_into()?;
-            scores[i as usize].1 = Vec::with_capacity(SOFT_ENUM_VARIANT_COUNT as usize);
-        }
+        // Build a score entry for every candidate in this list (not all objects).
+        let mut scores: Vec<(KnownObject, Vec<Score>)> = self
+            .0
+            .iter()
+            .map(|obj| (*obj, Vec::with_capacity(SOFT_ENUM_VARIANT_COUNT as usize)))
+            .collect();
 
         for soft_constraint_idx in 0..SOFT_ENUM_VARIANT_COUNT {
             let soft_constraint: SoftConstraints = soft_constraint_idx.try_into()?;
@@ -137,15 +137,23 @@ impl KnownObjectList {
                 .try_for_each(|x| eval_class(ctx, *x, page, soft_constraint, &mut scores))?;
         }
 
-        scores.iter_mut().for_each(|x| x.1.sort_by(|x, y| x.cmp(y)));
-        scores.sort_by(|x, y| x.1.last().unwrap().cmp(y.1.last().unwrap()));
+        scores.iter_mut().for_each(|x| x.1.sort_by(|a, b| a.cmp(b)));
+        scores.sort_by(|x, y| {
+            x.1.last()
+                .copied()
+                .unwrap_or_default()
+                .cmp(&y.1.last().copied().unwrap_or_default())
+        });
 
-        log::trace!(
-            "page {} soft sort complete, top candidate is {}",
-            page,
-            scores.last().unwrap().0.to_string()
-        );
+        if let Some(top) = scores.last() {
+            log::trace!(
+                "page {} soft sort complete, top candidate is {}",
+                page,
+                top.0.to_string()
+            );
+        }
 
-        Ok(self)
+        let sorted: Vec<KnownObject> = scores.into_iter().map(|(obj, _)| obj).collect();
+        Ok(Self { 0: sorted })
     }
 }

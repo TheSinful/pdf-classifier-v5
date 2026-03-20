@@ -51,7 +51,6 @@ std::unique_ptr<OpaqueDoc> create_new_doc(const std::unique_ptr<OpaqueCtx> &o_ct
     fz_try(ctx)
     {
         doc = fz_open_document(ctx, doc_path.c_str());
-        break;
     }
     fz_catch(ctx)
     {
@@ -66,14 +65,13 @@ std::unique_ptr<OpaqueResult> call_classify(const std::unique_ptr<OpaqueCtx> &o_
     fz_context *ctx = static_cast<fz_context *>(o_ctx->ptr);
     fz_document *doc = static_cast<fz_document *>(o_doc->ptr);
 
-    Func *found_func = nullptr;
-    for (int i = 0; i < ClassifyFuncMap.size(); i++)
+    const Func *found_func = nullptr;
+    for (size_t i = 0; i < ClassifyFuncMap.size(); i++)
     {
-        Func func = ClassifyFuncMap[i];
-
-        if (func.obj_name == obj)
+        if (ClassifyFuncMap[i].obj_name == obj)
         {
-            found_func = &func;
+            found_func = &ClassifyFuncMap[i];
+            break;
         }
     }
 
@@ -107,14 +105,13 @@ std::unique_ptr<OpaqueResult> call_extract(const std::unique_ptr<OpaqueCtx> &o_c
     fz_context *ctx = static_cast<fz_context *>(o_ctx->ptr);
     fz_document *doc = static_cast<fz_document *>(o_doc->ptr);
 
-    Func *found_func = nullptr;
-    for (int i = 0; i < ClassifyFuncMap.size(); i++)
+    const Func *found_func = nullptr;
+    for (size_t i = 0; i < ExtractFuncMap.size(); i++)
     {
-        Func func = ExtractFuncMap[i];
-
-        if (func.obj_name == obj)
+        if (ExtractFuncMap[i].obj_name == obj)
         {
-            found_func = &func;
+            found_func = &ExtractFuncMap[i];
+            break;
         }
     }
 

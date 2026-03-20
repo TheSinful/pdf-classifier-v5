@@ -14,7 +14,7 @@ pub enum Score {
     #[default]
     Neutral, // 0.0
     PUNISHMENT_Light, // -0.5
-    PUNISHMENT_Heavy, // -0.0
+    PUNISHMENT_Heavy, // -1.0
     Custom(f32),  // [-1.0, 1.0]
 }
 

@@ -14,6 +14,10 @@ impl Penalty for SkippedChildrenConstraint {}
 
 impl SoftConstraint for SkippedChildrenConstraint {
     fn eval(ctx: &Context, class: KnownObject, page: Page) -> Score {
+        if ctx.is_first_page(page) {
+            return Score::Neutral;
+        }
+
         let prev_inference = ctx.previous_page_inference(page.into());
 
         if !is_child(*prev_inference, class) {

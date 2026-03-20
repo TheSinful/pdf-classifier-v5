@@ -11,6 +11,9 @@ impl HardConstraint for ValidPairRule {
         class: crate::generated::generated_object_types::KnownObject,
         page: Page,
     ) -> bool {
+        if ctx.is_first_page(page) {
+            return true;
+        }
         reflected_objects::is_pair(*ctx.previous_page_inference(page), class)
     }
 }
