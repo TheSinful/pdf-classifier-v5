@@ -150,10 +150,10 @@ class ObjectBuilder:
         if not hasattr(self, "_header") and file_name == "": 
             raise RuntimeError("Attempted to define a classify/extract func without a header path!")        
 
-        if not file_name == "":
+        if file_name == "":
             self._extract_func = UserFunc(self._header, self._name, name)
         else:
-            self._extract_func = UserFunc(self._header, self._name, name)
+            self._extract_func = UserFunc(file_name, self._name, name)
         
         return self
     
