@@ -1,0 +1,8 @@
+Metadata-Version: 2.4
+Name: pdf_classifier
+Version: 1.0
+Summary: PDF classifier frontend.
+Requires-Python: >=3.12.6
+Requires-Dist: cmake>=4.2.0
+Provides-Extra: dev
+Requires-Dist: pytest>=9.0.2; extra == "dev"
