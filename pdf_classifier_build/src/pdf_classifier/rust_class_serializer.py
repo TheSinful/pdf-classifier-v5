@@ -14,7 +14,7 @@ class RustClassSerializer(Serializer):
     output_file_name: str
     
     def __init__(self, objects: list[Object], core_generated_module_path: Path, 
-                 enum_name: str = "KnownObject", output_file_name: str = "generated_object_types.rs"): 
+                 enum_name: str = "{self.enum_name}", output_file_name: str = "generated_object_types.rs"): 
         self.core_generated_module_path = core_generated_module_path
         self.objects = objects 
         self.enum_name = enum_name
@@ -65,7 +65,7 @@ class RustClassSerializer(Serializer):
         ]
 
         self.data += textwrap.dedent(f"""
-            impl ToString for KnownObject {{
+            impl ToString for {self.enum_name} {{
                 fn to_string(&self) -> String {{
                     match self {{
                         {self._fmt_payload(to_str_cases)}
@@ -79,11 +79,11 @@ class RustClassSerializer(Serializer):
             #[derive(thiserror::Error, Debug)]
             pub enum ObjectCastError {{
                 #[error(
-                    "Attempted to cast {{0}} into a KnownObject, but no object corresponds with said string!"
+                    "Attempted to cast {{0}} into a {self.enum_name}, but no object corresponds with said string!"
                 )]
                 StringCastError(String),
 
-                #[error("Attempted to cast {{0}} into a KnownObject, but no object holds said discriminant!")]
+                #[error("Attempted to cast {{0}} into a {self.enum_name}, but no object holds said discriminant!")]
                 UIntCastError(u8),
             }}
         """)
@@ -95,7 +95,7 @@ class RustClassSerializer(Serializer):
         ]
         
         self.data += textwrap.dedent(f"""
-            impl TryFrom<&str> for KnownObject {{
+            impl TryFrom<&str> for {self.enum_name} {{
                 type Error = ObjectCastError;
 
                 fn try_from(value: &str) -> Result<Self, Self::Error> {{
@@ -181,7 +181,7 @@ class RustClassSerializer(Serializer):
         ]
         
         self.data += textwrap.dedent(f"""
-            impl TryFrom<u8> for KnownObject {{
+            impl TryFrom<u8> for {self.enum_name} {{
                 type Error = ObjectCastError;
 
                 fn try_from(value: u8) -> Result<Self, Self::Error> {{
@@ -199,7 +199,7 @@ class RustClassSerializer(Serializer):
     
     def _default_impl(self) -> None: 
         self.data += textwrap.dedent(f"""                              
-            impl Default for KnownObject {{
+            impl Default for {self.enum_name} {{
                 fn default() -> Self {{
                     Self::UNKNOWN
                 }}
@@ -213,7 +213,7 @@ class RustClassSerializer(Serializer):
         ]
         
         self.data += textwrap.dedent(f"""
-            impl Into<u8> for KnownObject {{
+            impl Into<u8> for {self.enum_name} {{
                 fn into(self) -> u8 {{
                     match self {{
                         {self._fmt_payload(into_u8_cases, ", ")}
