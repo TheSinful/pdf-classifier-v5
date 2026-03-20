@@ -56,7 +56,7 @@ class CppClassSerializer(Serializer):
         self.data += textwrap.dedent(f"""
             std::string page_type_to_string({self.enum_name} obj) {{
                 switch (obj) {{
-                    {to_str_cases}
+                    {self._fmt_payload(to_str_cases)}
                     default: return "unknown"; 
                 }}
             }}
@@ -70,7 +70,7 @@ class CppClassSerializer(Serializer):
         
         self.data += textwrap.dedent(f"""
             {self.enum_name} page_type_from_string(std::string obj) {{
-                {from_str_cases}
+                {self._fmt_payload(from_str_cases)}
                 throw std::runtime_error("Attempted to convert string to object that doesn't exist!"); 
             }}
         """)
