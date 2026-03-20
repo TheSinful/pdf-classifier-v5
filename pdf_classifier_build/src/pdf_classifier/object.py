@@ -177,7 +177,7 @@ class ObjectBuilder:
         obj: Object = Object(self._name, self._classify_func.name, self._extract_func.name, self._organizational)
         if self._pair is not None: 
             match = self._factory._find_obj(self._pair[0]().name)  # type: ignore (safe)
-            match().pair = (ref(obj), 1) # type: ignore
+            match()._pair = (ref(obj), 1) # type: ignore
             
         return self._factory._finalize(
             obj,
