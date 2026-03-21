@@ -1,5 +1,5 @@
 from pathlib import Path
-from pdf_classifier import Builder, ObjectBuilder, ObjectFactory
+from pdf_classifier import Builder, ObjectFactory
 import logging
 
 logging.basicConfig(
@@ -9,7 +9,6 @@ logging.basicConfig(
 
 factory = ObjectFactory("test.hpp")
 
-factory.new().name("unknown").classify("UNKNOWN_classify").extract("UNKNOWN_extract").build()
 factory.new().name("chapter").classify("classify").extract("extract").organizational().build()
 factory.new().name("subchapter").classify("classify").extract("extract").child_of("chapter").organizational().build()
 factory.new().name("diagram").classify("classify").extract("extract").child_of("subchapter").pair_to("datatable", 1).build()

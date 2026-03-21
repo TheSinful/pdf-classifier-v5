@@ -44,15 +44,3 @@ Result *extract(uint32_t page, fz_context *ctx, fz_document *doc, void *shared)
         return Result::ok(NULL, NULL);
     }
 }
-
-// see header for explanation
-Result *UNKNOWN_classify(uint32_t page, fz_context *ctx, fz_document *doc)
-{
-    return Result::fail("attempted to call classify on the 'unknown' class variant.");
-}
-
-// see header for explanation
-Result *UNKNOWN_extract(uint32_t page, fz_context *ctx, fz_document *doc, void *shared)
-{
-    return Result::fail("attempted to call extract on the 'unknown' class variant.");
-}

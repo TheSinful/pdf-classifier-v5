@@ -7,7 +7,6 @@ from .mupdf_builder import MupdfBuilder
 from .rust_class_serializer import RustClassSerializer
 from .rust_mod_generator import RustModuleGenerator
 from .object import Object, ObjectFactory
-from .user_func import UserFunc
 from .hierarchy_serializer import HierarchySerializer
 from pathlib import Path
 import logging
@@ -31,15 +30,17 @@ class Builder:
     generated_dir: Path
     mupdf_build_dir: Path
     rs_core_generated_module_path: Path
+    objects = list[Object]
     
     def __init__(self, build_dir: Path, factory: ObjectFactory,
                  user_cmake_lists_path: Path, **kwargs) -> None:
-        objects = factory._objs
+        self.objects = factory._objs
+        self._inject_unknown_obj()
         expected_classify_funcs = factory._expected_classify_funcs
         expected_extract_funcs = factory._expected_extract_funcs
         
         logger.debug("Initializing Builder with build_dir=%s, %d objects, %d classify funcs, %d extract funcs",
-                     build_dir, len(objects), len(expected_classify_funcs), len(expected_extract_funcs))
+                     build_dir, len(self.objects), len(expected_classify_funcs), len(expected_extract_funcs))
         self.build_root: Path = build_dir
         self.include_dir: Path = build_dir / "include"
         self.shared_header_dir: Path = self.include_dir / "shared" 
@@ -49,17 +50,20 @@ class Builder:
         logger.debug("Resolved paths: shared_header_dir=%s, include_dir=%s, rs_generated=%s",
                      self.shared_header_dir, self.include_dir, self.rs_core_generated_module_path)
 
-        self.cpp_class_serializer = CppClassSerializer(self.shared_header_dir, objects)
+        self.cpp_class_serializer = CppClassSerializer(self.shared_header_dir, self.objects)
         self.cpp_func_map_generator = CppFuncMapGenerator(expected_classify_funcs, expected_extract_funcs, self.shared_header_dir)
         self.user_cpp_builder = UserCppBuilder(self.build_root, self.shared_header_dir, 
                                                user_cmake_lists_path, self.mupdf_build_dir, self.include_dir, kwargs)
         self.func_map_validator = UserFuncValidator(expected_classify_funcs, expected_extract_funcs, user_cmake_lists_path)
         self.header_serializer = HeaderCopier(self.shared_header_dir)
         self.mupdf_builder = MupdfBuilder(self.build_root)
-        self.rust_class_serializer = RustClassSerializer(objects, self.rs_core_generated_module_path)
+        self.rust_class_serializer = RustClassSerializer(self.objects, self.rs_core_generated_module_path)
         self.rust_generator = RustModuleGenerator(self.rs_core_generated_module_path)
-        self.hierarchy_serializer = HierarchySerializer(objects, self.rs_core_generated_module_path)
+        self.hierarchy_serializer = HierarchySerializer(self.objects, self.rs_core_generated_module_path)
         logger.debug("Builder initialization complete")
+
+    def _inject_unknown_obj(self): 
+        self.objects.insert(0, Object("unknown", "UNKNOWN_classify", "UNKNOWN_extract"))
 
     def build(self): 
         logger.info("Starting full build")
