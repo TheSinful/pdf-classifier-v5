@@ -14,7 +14,7 @@ class RustClassSerializer(Serializer):
     output_file_name: str
     
     def __init__(self, objects: list[Object], core_generated_module_path: Path, 
-                 enum_name: str = "{self.enum_name}", output_file_name: str = "generated_object_types.rs"): 
+                 enum_name: str = "KnownObject", output_file_name: str = "generated_object_types.rs"): 
         self.core_generated_module_path = core_generated_module_path
         self.objects = objects 
         self.enum_name = enum_name
@@ -75,7 +75,7 @@ class RustClassSerializer(Serializer):
         """)
         
     def _obj_cast_err_enum(self) -> None: 
-        self.data += textwrap.dedent("""
+        self.data += textwrap.dedent(f"""
             #[derive(thiserror::Error, Debug)]
             pub enum ObjectCastError {{
                 #[error(
