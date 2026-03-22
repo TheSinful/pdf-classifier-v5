@@ -1,4 +1,4 @@
 [workspace]
 name = "pdf_classifier"
 version = "0.1.0"
-members = ["pdf_classifier_core"]
+members = ["pdf_classifier_core", "pdf_classifier_macros"]
