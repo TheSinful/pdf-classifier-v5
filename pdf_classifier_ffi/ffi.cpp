@@ -66,20 +66,19 @@ std::unique_ptr<OpaqueResult> call_classify(const std::unique_ptr<OpaqueCtx> &o_
     fz_context *ctx = static_cast<fz_context *>(o_ctx->ptr);
     fz_document *doc = static_cast<fz_document *>(o_doc->ptr);
 
-    Func *found_func = nullptr;
-    for (int i = 0; i < ClassifyFuncMap.size(); i++)
+    const Func *found_func = nullptr;
+    for (const auto &func : ClassifyFuncMap)
     {
-        Func func = ClassifyFuncMap[i];
-
         if (func.obj_name == obj)
         {
             found_func = &func;
+            break;
         }
     }
 
     if (found_func == nullptr)
     {
-        throw std::runtime_error("couldn't find obj: " + obj + "in generated func map!");
+        throw std::runtime_error("couldn't find obj: '" + obj + "' in generated func map!");
     }
 
     void *ptr = found_func->ptr;
@@ -107,14 +106,13 @@ std::unique_ptr<OpaqueResult> call_extract(const std::unique_ptr<OpaqueCtx> &o_c
     fz_context *ctx = static_cast<fz_context *>(o_ctx->ptr);
     fz_document *doc = static_cast<fz_document *>(o_doc->ptr);
 
-    Func *found_func = nullptr;
-    for (int i = 0; i < ClassifyFuncMap.size(); i++)
+    const Func *found_func = nullptr;
+    for (const auto &func : ExtractFuncMap)
     {
-        Func func = ExtractFuncMap[i];
-
         if (func.obj_name == obj)
         {
             found_func = &func;
+            break;
         }
     }
 
