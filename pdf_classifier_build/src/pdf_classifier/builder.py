@@ -30,7 +30,7 @@ class Builder:
     generated_dir: Path
     mupdf_build_dir: Path
     rs_core_generated_module_path: Path
-    objects = list[Object]
+    objects: list[Object]
     
     def __init__(self, build_dir: Path, factory: ObjectFactory,
                  user_cmake_lists_path: Path, **kwargs) -> None:
