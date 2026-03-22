@@ -1,9 +1,9 @@
+use crate::constraints;
 use crate::generated::generated_object_types::ObjectCastError;
 use crate::obj_list::KnownObjectList;
-use crate::weighting::constraints;
 use crate::{
-    context::Context, generated::generated_object_types::KnownObject, page::Page,
-    weighting::constraints::SoftConstraints,
+    constraints::SoftConstraints, context::Context, generated::generated_object_types::KnownObject,
+    page::Page,
 };
 
 #[derive(thiserror::Error, Debug)]
