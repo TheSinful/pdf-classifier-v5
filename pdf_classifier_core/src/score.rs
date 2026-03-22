@@ -1,6 +1,7 @@
 use std::{
     f32,
     fmt::Display,
+    iter::Sum,
     ops::{Add, Sub},
 };
 
@@ -80,5 +81,17 @@ impl Sub for Score {
     type Output = Score;
     fn sub(self, rhs: Self) -> Self::Output {
         (self.into_f32() - rhs.into_f32()).into()
+    }
+}
+
+impl Sum for Score {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+        iter.sum()
+    }
+}
+
+impl<'a> Sum<&'a Score> for Score {
+    fn sum<I: Iterator<Item = &'a Self>>(iter: I) -> Self {
+        iter.fold(Score::Neutral, |acc, s| acc + *s)
     }
 }
