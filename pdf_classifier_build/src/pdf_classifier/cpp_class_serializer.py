@@ -44,7 +44,7 @@ class CppClassSerializer(Serializer):
         self.data += textwrap.dedent(f"""
             enum {self.enum_name} {{
                 {self._fmt_payload(payload, ", ")}
-            }}
+            }};
         """)
         
     def _to_string_method(self) -> None: 
