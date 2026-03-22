@@ -1,33 +1,38 @@
+use crate::debug_assert_if;
+use crate::ffi::UserResult;
+use crate::generated::generated_object_types::KnownObject;
+use crate::threading::pool::JobResult;
 use crate::{
     context::{Context, ContextError, ContextUpdateHistory},
-    page::Page,
     inferencer::{InferenceError, Inferencer},
+    page::Page,
+    threading::pool::ThreadPool,
 };
+use std::path::PathBuf;
 
 mod defer;
 mod error;
 
 use defer::DeferenceClassifier;
 
-type DecisionResult = ();
-
 pub struct Classifier {
     pub current_page: Page,
     end_page: Page,
     inferencer: Inferencer,
     largest_defer_size: usize,
+    thread_pool: ThreadPool,
 }
 
 pub struct ClassifcationStep {
-    pages_iterated_over: usize,
-    context_updates: ContextUpdateHistory,
-    notes: String,
+    pub pages_iterated_over: usize,
+    pub context_updates: ContextUpdateHistory,
+    pub notes: String,
 }
 
 #[derive(thiserror::Error, Debug)]
 pub enum ClassificationError {
     #[error(transparent)]
-    ScoreManagerError(#[from] InferenceError),
+    InferenceError(#[from] InferenceError),
 
     #[error(transparent)]
     ContextRecordError(#[from] ContextError),
@@ -39,12 +44,22 @@ impl Classifier {
         end_page: Page,
         inferencer: Inferencer,
         largest_defer_size: usize,
+        num_threads: usize,
+        doc_path: PathBuf,
     ) -> Self {
+        if start_page.num > end_page.num {
+            panic!(
+                "end page ({}) is before start page ({})",
+                end_page.num, start_page.num
+            );
+        }
+
         Self {
             current_page: start_page,
             inferencer,
             largest_defer_size,
             end_page,
+            thread_pool: ThreadPool::new(num_threads, doc_path),
         }
     }
 
@@ -63,8 +78,12 @@ impl Classifier {
             let step = self.step(&mut ctx)?;
             steps.push(step);
 
+            self.poll();
+
             log::trace!("end page {}", _page);
         }
+
+        while let Some(_) = self.poll() {}
 
         Ok(steps)
     }
@@ -93,6 +112,11 @@ impl Classifier {
             "Should've only received one winner from Inferencer while stepping sequentially."
         );
 
+        // may be a better way to do this, but works as a band-aid for now.
+        if winners[0] != KnownObject::UNKNOWN {
+            self.thread_pool.schedule(winners[0], self.current_page);
+        }
+
         ctx.decide(self.current_page, winners[0], &mut history)?;
         self.current_page.num += STEP_COUNT as u32;
 
@@ -103,11 +127,69 @@ impl Classifier {
         })
     }
 
-    pub fn defer(self) -> DeferenceClassifier {
-        DeferenceClassifier::new(
-            self.current_page,
-            self.inferencer,
-            self.largest_defer_size,
-        )
+    fn poll(&mut self) -> Option<()> {
+        let results = self.thread_pool.poll();
+
+        if results.is_none() {
+            log::warn!("attempted to poll despite threadpool being exhausted.");
+
+            return None;
+        }
+
+        for result in results.unwrap() {
+            match result {
+                JobResult::Classification {
+                    page,
+                    res,
+                    as_class,
+                } => self.handle_classification_result(page, res, as_class),
+                JobResult::Extraction {
+                    page,
+                    res,
+                    as_class,
+                } => self.handle_extraction_result(page, res, as_class),
+            }
+        }
+
+        Some(())
+    }
+
+    fn handle_classification_result(
+        &self,
+        page: Page,
+        res: Result<(), String>,
+        class: KnownObject,
+    ) -> () {
+        if let Err(e) = res {
+            log::warn!(
+                "classification as class {}, failed upon page {}.\n{}",
+                class.to_string(),
+                page,
+                e
+            );
+            // todo: defer here
+        }
+    }
+
+    fn handle_extraction_result(
+        &mut self,
+        page: Page,
+        res: UserResult<()>,
+        class: KnownObject,
+    ) -> () {
+        if let UserResult::Fail(e) = res {
+            log::error!(
+                "failed to extract page {}, as class {}\n {}",
+                page,
+                class.to_string(),
+                e.extract_fail_rsn()
+            );
+        }
+
+        // todo: handle user data here, would likely just write to a json file
+    }
+
+    fn defer(self) -> DeferenceClassifier {
+        DeferenceClassifier::new(self.current_page, self.inferencer, self.largest_defer_size)
     }
 }
