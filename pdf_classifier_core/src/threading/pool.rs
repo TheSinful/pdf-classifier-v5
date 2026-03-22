@@ -74,12 +74,24 @@ impl ThreadPool {
         }
 
         while let Poll::Ready(Some(fut)) = self.classification_futures.poll_next_unpin(&mut cx) {
-            results.push(self.handle_classification_result(fut.class, fut.page, fut.result));
+            results.push(self.handle_classification_result(
+                fut.class,
+                fut.page,
+                fut.result,
+                fut.worker_id,
+            ));
+
             self.push_worker_to_available(fut.worker_id);
         }
 
         while let Poll::Ready(Some(fut)) = self.extraction_futures.poll_next_unpin(&mut cx) {
-            results.push(self.handle_extraction_result(fut.class, fut.page, fut.result));
+            results.push(self.handle_extraction_result(
+                fut.class,
+                fut.page,
+                fut.result,
+                fut.worker_id,
+            ));
+
             self.push_worker_to_available(fut.worker_id);
         }
 
@@ -140,9 +152,17 @@ impl ThreadPool {
         class: KnownObject,
         page: Page,
         res: ClassificationResult,
+        worker_id: u32,
     ) -> JobResult {
         match res {
             UserResult::Ok(res) => {
+                log::trace!(
+                    "[WORKER {}] classification on page {} as class {} was successful.",
+                    worker_id,
+                    page.num,
+                    class.to_string()
+                );
+
                 let res_ptr = Box::new(res);
 
                 self.pending_extract_shared.insert(page, res_ptr);
@@ -158,11 +178,21 @@ impl ThreadPool {
                     as_class: class,
                 }
             }
-            UserResult::Fail(res) => JobResult::Classification {
-                page,
-                res: Err(res.extract_fail_rsn().to_string()),
-                as_class: class,
-            },
+            UserResult::Fail(res) => {
+                log::trace!(
+                    "[WORKER {}] classification on page {} as class {}, failed with err {}.",
+                    worker_id,
+                    page.num,
+                    class.to_string(),
+                    res.extract_fail_rsn().to_string(),
+                );
+
+                JobResult::Classification {
+                    page,
+                    res: Err(res.extract_fail_rsn().to_string()),
+                    as_class: class,
+                }
+            }
         }
     }
 
@@ -171,9 +201,17 @@ impl ThreadPool {
         class: KnownObject,
         page: Page,
         res: UserResult<()>,
+        worker_id: u32,
     ) -> JobResult {
         match res {
             UserResult::Ok(_) => {
+                log::trace!(
+                    "[WORKER {}] extraction on page {} as class {} was successful",
+                    worker_id,
+                    page.num,
+                    class.to_string(),
+                );
+
                 // TODO: export data, currently just goes to user to write to a file
                 JobResult::Extraction {
                     page,
@@ -182,9 +220,19 @@ impl ThreadPool {
                 }
             }
             UserResult::Fail(_) => {
-                todo!(
-                    "throw an error here, we will assume extraction just failed and mark it as empty"
-                )
+                log::trace!(
+                    "[WORKER {}] extraction on page {} as class {} failed with err {}",
+                    worker_id,
+                    page.num,
+                    class.to_string(),
+                    res.fail_rsn().unwrap(),
+                );
+
+                JobResult::Extraction {
+                    page,
+                    res,
+                    as_class: class,
+                }
             }
         }
     }
