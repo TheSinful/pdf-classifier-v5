@@ -17,7 +17,7 @@ struct OpaqueDoc
 
 struct SharedData
 {
-    void *ptr; // void* (Result::payload)
+    void *ptr; // Result::payload*
 };
 
 struct OpaqueResult
