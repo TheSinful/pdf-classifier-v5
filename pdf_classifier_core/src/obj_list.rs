@@ -1,17 +1,42 @@
+use crate::constraints::DefinitiveConstraints;
+use crate::constraints::HardConstraints;
+use crate::constraints::{
+    DEFINITIVE_ENUM_VARIANT_COUNT, HARD_ENUM_VARIANT_COUNT, SOFT_ENUM_VARIANT_COUNT,
+    SoftConstraints,
+};
 use crate::context::Context;
 use crate::generated::generated_object_types::KnownObject;
 use crate::generated::generated_object_types::OBJECT_COUNT;
 use crate::inferencer::{InferenceError, InferenceResult};
 use crate::page::Page;
 use crate::score::Score;
-use crate::weighting::constraints::DefinitiveConstraints;
-use crate::weighting::constraints::HardConstraints;
-use crate::weighting::constraints::{
-    DEFINITIVE_ENUM_VARIANT_COUNT, HARD_ENUM_VARIANT_COUNT, SOFT_ENUM_VARIANT_COUNT,
-    SoftConstraints,
-};
+use std::ops::Deref;
+use std::ops::DerefMut;
 
-pub(crate) struct KnownObjectList(pub Vec<KnownObject>);
+#[derive(Debug)]
+struct ScoreList(pub Vec<Score>);
+
+impl ScoreList {
+    pub fn sum(&self) -> Score {
+        self.0.iter().sum()
+    }
+}
+
+impl Deref for ScoreList {
+    type Target = Vec<Score>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for ScoreList {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+pub struct KnownObjectList(pub Vec<KnownObject>);
 
 impl KnownObjectList {
     pub fn new() -> InferenceResult<Self> {
@@ -32,7 +57,9 @@ impl KnownObjectList {
         ctx: &Context,
         page: Page,
     ) -> InferenceResult<Self> {
-        let mut result = Vec::with_capacity(1);
+        // ! similar issue to [KnownObjectList::filter_by_hard_constraints], see comment block there.
+
+        let mut result = Vec::new();
 
         for def_constraint_discrim in 0..DEFINITIVE_ENUM_VARIANT_COUNT {
             let def_constraint: DefinitiveConstraints = def_constraint_discrim.try_into()?;
@@ -64,17 +91,33 @@ impl KnownObjectList {
             "page {} passed all definitive constraints with no match, returning full candidate list",
             page
         );
-        Ok(Self { 0: self.0 })
+
+        Ok(self)
     }
 
-    pub fn filter_by_hard_constraints(self, ctx: &Context, page: Page) -> InferenceResult<Self> {
-        let mut result = Vec::new();
-        let before = self.0.len();
+    pub fn filter_by_hard_constraints(
+        mut self,
+        ctx: &Context,
+        page: Page,
+    ) -> InferenceResult<Self> {
+        /*
+            ! this implementation may be slightly flawed
+            ! since we inherently iterate over the unknown class variant (discrim=0)
+            ! we will validate it against constraints, and inevitably it will fail
+            ! therefore, this will be zero and later on the pipe-line we reconstruct following. unwrap_or_default()
+            ! as unknown, which is exactly what we just discarded.
+            ! therefore, this can be optimized by never touching unknown.
+            ! or maybe not, since .unwrap() will be just as time-consuming as .unwrap_or_default(), the only save
+            ! really being with .unwrap_unchecked()? but i'm not sure if the safety trade-off is worth it here.
+            ! maybe if this holds stability and remains constant in terms of changes that trade-off could be made.
+        */
+
+        let before_count = self.0.len();
 
         for hard_constraint in 0..HARD_ENUM_VARIANT_COUNT {
             let constraint: HardConstraints = hard_constraint.try_into()?;
 
-            result = self
+            self.0 = self
                 .0
                 .iter()
                 .filter(|x| constraint.eval(ctx, **x, page))
@@ -82,33 +125,35 @@ impl KnownObjectList {
                 .collect::<Vec<KnownObject>>();
 
             log::trace!(
-                "page {} after hard constraint {:?}: {} candidates remaining",
+                "page {} after hard constraint {:?}: {} candidates remaining ({:?})",
                 page,
                 constraint,
-                result.len()
+                self.0.len(),
+                self.0
             );
         }
 
         log::trace!(
             "page {} hard filtering done, {} -> {} candidates",
             page,
-            before,
-            result.len()
+            before_count,
+            self.0.len()
         );
-        Ok(Self { 0: result })
+
+        Ok(self)
     }
 
     pub fn sort_by_soft_constraints(self, ctx: &Context, page: Page) -> InferenceResult<Self> {
-        pub(crate) fn eval_class(
+        fn eval_class(
             ctx: &Context,
             class: KnownObject,
             page: Page,
             constraint: SoftConstraints,
-            scores: &mut Vec<(KnownObject, Vec<Score>)>,
+            scores: &mut Vec<(KnownObject, ScoreList)>,
         ) -> InferenceResult<()> {
             let score = constraint.eval(ctx, class, page);
             log::trace!(
-                "page {} class {} scored {:?} on soft constraint {:?}",
+                "page {}, class {} scored: {:?} on soft constraint: {:?}",
                 page,
                 class.to_string(),
                 score,
@@ -123,11 +168,16 @@ impl KnownObjectList {
             Ok(())
         }
 
-        let mut scores: Vec<(KnownObject, Vec<Score>)> = Vec::with_capacity(OBJECT_COUNT as usize);
-        for i in 0..OBJECT_COUNT {
-            scores[i as usize].0 = i.try_into()?;
-            scores[i as usize].1 = Vec::with_capacity(SOFT_ENUM_VARIANT_COUNT as usize);
-        }
+        let mut scores: Vec<(KnownObject, ScoreList)> = (1..OBJECT_COUNT) // skip unknown variant
+            .map(|i| {
+                Ok((
+                    i.try_into()?,
+                    ScoreList {
+                        0: Vec::with_capacity(SOFT_ENUM_VARIANT_COUNT as usize),
+                    },
+                ))
+            })
+            .collect::<InferenceResult<_>>()?;
 
         for soft_constraint_idx in 0..SOFT_ENUM_VARIANT_COUNT {
             let soft_constraint: SoftConstraints = soft_constraint_idx.try_into()?;
@@ -138,14 +188,18 @@ impl KnownObjectList {
         }
 
         scores.iter_mut().for_each(|x| x.1.sort_by(|x, y| x.cmp(y)));
-        scores.sort_by(|x, y| x.1.last().unwrap().cmp(y.1.last().unwrap()));
+
+        scores.sort_by(|x, y| x.1.sum().cmp(&y.1.sum()));
 
         log::trace!(
-            "page {} soft sort complete, top candidate is {}",
+            "page {} soft sort complete, top candidate is {}, (all candidates) {:?} ",
             page,
-            scores.last().unwrap().0.to_string()
+            scores.last().unwrap().0.to_string(),
+            scores
         );
 
-        Ok(self)
+        Ok(Self {
+            0: scores.into_iter().map(|f| f.0).collect(),
+        })
     }
 }
