@@ -45,8 +45,11 @@ impl Context {
     pub fn previous_page_inference(&self, from_page: Page) -> &KnownObject {
         if from_page.num == 0 {
             panic!("Attempted to access previous page of page 0 (no negative pages exist)")
-        } else if from_page.num as usize > self.page_count {
-            panic!("Attempted to access previous page of a page outside page bounds!");
+        } else if from_page.num > self.end_page.num {
+            panic!(
+                "Attempted to access previous page of a page outside page bounds! ({} > {})",
+                from_page.num, self.page_count
+            );
         }
 
         self.pages.index(&(from_page - 1u32.into()))
@@ -81,4 +84,5 @@ impl Context {
 
         Ok(())
     }
+
 }
