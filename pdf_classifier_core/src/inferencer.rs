@@ -77,7 +77,7 @@ impl Inferencer {
 
             // todo: apply dynamic weighting here or maybe take an arg in "sort" to do so
 
-            let winner = *candidates.0.last().unwrap();
+            let winner = *candidates.0.last().unwrap_or_else(|| &KnownObject::UNKNOWN);
             winners.push(winner);
             log::trace!("page {} final inference: {}", page, winner.to_string());
         }
