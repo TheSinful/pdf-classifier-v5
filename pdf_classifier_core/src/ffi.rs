@@ -120,7 +120,7 @@ impl<T> From<FailUserResult> for UserResult<T> {
 ///     Worker **sends** UserResult back to mainthread for evaluation (from classify call)
 ///     Main thread now has ownership
 ///
-/// UserResult is meant to not be synced between threads while its purpose is that example
+/// UserResult is intentionally not Sync as explained by the example above.
 unsafe impl<T> Send for UserResult<T> {}
 
 impl<T> Drop for OkUserResult<T> {
