@@ -2,26 +2,27 @@ use std::env;
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:rerun-if-changed=src_cpp");
+    println!("cargo:rerun-if-changed=../pdf_classifier_ffi");
     println!("cargo:rerun-if-changed=src/ffi.rs");
-    println!("cargo:rerun-if-changed=src_cpp/ffi.cpp");
+    println!("cargo:rerun-if-changed=../pdf_classifier_ffi/ffi.cpp");
     println!("cargo:rerun-if-changed=CMakeLists.txt");
     println!("cargo:rerun-if-env-changed=CXX");
     println!("cargo:rerun-if-env-changed=CC");
     println!("cargo:rerun-if-env-changed=PROFILE");
 
+    let root = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let build_dir = env::var("CLASSIFIER_BUILD_DIR").unwrap_or(format!("{}/../examples/build", root));
     let mut build = cxx_build::bridges(&["src/ffi.rs"]);
     build
         .flag_if_supported("/std:c++20")
-        .file("src_cpp/ffi.cpp")
-        .include("./src_cpp")
-        .include("./build/include")
+        .file("../pdf_classifier_ffi/ffi.cpp")
+        .include(format!("{}/include", build_dir))
+        .include("../pdf_classifier_ffi")
         .cpp(true)
         .compile("bindings");
 
     // Link all external libs (i.e MuPDF for bindings)
-    let root = env::var("CARGO_MANIFEST_DIR").unwrap();
-    println!("cargo:rustc-link-search=native={}/build/lib", root);
+    println!("cargo:rustc-link-search=native={}/lib", build_dir);
 
     // link exported bindings.lib from cxx
     let out_dir = env::var("OUT_DIR").unwrap();
