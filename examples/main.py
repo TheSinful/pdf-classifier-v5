@@ -1,20 +1,20 @@
-import sys 
 from pathlib import Path
+from pdf_classifier import Builder, ObjectFactory
+import logging
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src_py"))
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
 
-from build import Builder 
-from object import *
+factory = ObjectFactory("test.hpp")
 
-classify = ObjectFunc("test.h", "obj", "classify")
-extract = ObjectFunc("test.h", "obj", "extract")
+factory.new().name("chapter").classify("classify").extract("extract").organizational().build()
+factory.new().name("subchapter").classify("classify").extract("extract").child_of("chapter").organizational().build()
+factory.new().name("diagram").classify("classify").extract("extract").child_of("subchapter").pair_to("datatable", 1).build()
+factory.new().name("datatable").classify("classify").extract("extract").child_of("subchapter").pair_to("diagram", 2).build()
 
-# Organizational objects (independent) - can serve as anchors during recovery
-chapter = def_obj("chapter", classify, extract, is_organizational=True)
-subchapter = def_obj("subchapter", classify, extract, chapter, is_organizational=True) 
+examples_root = Path(__file__).parent
 
-# Data objects (dependent) - rely on organizational structure
-(diagram, datatable) = def_pair("diagram", classify, extract, "datatable", classify, extract, subchapter, is_organizational=False)
-
-build = Builder(Path(__file__).parent / "CMakeLists.txt", Path(__file__).parent / "build")
+build = Builder(examples_root / "build", factory, examples_root / "CMakeLists.txt", )
 build.build()

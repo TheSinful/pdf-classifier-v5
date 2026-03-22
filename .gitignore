@@ -1,8 +1,13 @@
 build/
 lib/
 include/
-src_py/venv
 .vs/
 target/
-src/generated
-.github/agent-conceptual-log.md
+generated/
+build/
+test_data/
+.pytest_cache/
+__pycache__/
+.venv/
+dist/
+*.egg-info/
