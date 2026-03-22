@@ -90,6 +90,15 @@ impl<T> UserResult<T> {
             UserResult::Fail(fail_user_result) => Some(fail_user_result),
         }
     }
+
+    pub fn fail_rsn(&self) -> Option<String> {
+        match self {
+            UserResult::Ok(_) => None,
+            UserResult::Fail(fail_user_result) => {
+                Some(fail_user_result.extract_fail_rsn().to_string())
+            }
+        }
+    }
 }
 
 impl<T> From<OkUserResult<T>> for UserResult<T> {
