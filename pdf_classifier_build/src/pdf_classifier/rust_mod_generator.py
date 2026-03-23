@@ -21,7 +21,8 @@ class RustModuleGenerator:
         
         data = textwrap.dedent("""
             pub mod reflected_objects;
-            pub mod generated_object_types;    
+            pub mod generated_object_types;
+            pub mod overrides;
         """)
     
         with open(mod_rs_path, "w") as f: 

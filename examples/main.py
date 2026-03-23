@@ -1,5 +1,5 @@
 from pathlib import Path
-from pdf_classifier import Builder, ObjectFactory
+from pdf_classifier import Builder, ObjectFactory, BlankAfterClassOverride
 import logging
 
 logging.basicConfig(
@@ -17,4 +17,4 @@ factory.new().name("datatable").classify("classify").extract("extract").child_of
 examples_root = Path(__file__).parent
 
 build = Builder(examples_root / "build", factory, examples_root / "CMakeLists.txt", )
-build.build()
+build.override(BlankAfterClassOverride("chapter")).build()

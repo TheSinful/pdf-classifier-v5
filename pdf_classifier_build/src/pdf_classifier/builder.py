@@ -8,6 +8,8 @@ from .rust_class_serializer import RustClassSerializer
 from .rust_mod_generator import RustModuleGenerator
 from .object import Object, ObjectFactory
 from .hierarchy_serializer import HierarchySerializer
+from .override import Override
+from .override_serializer import OverrideSerializer
 from pathlib import Path
 import logging
 
@@ -23,6 +25,7 @@ class Builder:
     rust_class_serializer: RustClassSerializer
     rust_generator: RustModuleGenerator
     hierarchy_serializer: HierarchySerializer
+    override_serializer: OverrideSerializer
     
     build_root: Path     
     shared_header_dir: Path
@@ -31,9 +34,11 @@ class Builder:
     mupdf_build_dir: Path
     rs_core_generated_module_path: Path
     objects: list[Object]
+    overrides: list[Override]
     
     def __init__(self, build_dir: Path, factory: ObjectFactory,
                  user_cmake_lists_path: Path, **kwargs) -> None:
+        self.overrides = []
         self.objects = factory._objs
         self._inject_unknown_obj()
         expected_classify_funcs = factory._expected_classify_funcs
@@ -46,7 +51,7 @@ class Builder:
         self.shared_header_dir: Path = self.include_dir / "shared" 
         self.generated_dir: Path = build_dir / "generated"
         self.mupdf_build_dir: Path = build_dir / "mupdf"
-        self.rs_core_generated_module_path: Path = Path(__file__).parent.parent.parent.parent / "src" / "generated" # TODO: change to a defenitive path, currently Builder doesn't build its own version of classifier
+        self.rs_core_generated_module_path: Path = Path(__file__).parent.parent.parent.parent / "pdf_classifier_core" / "src" / "generated" # TODO: change to a defenitive path, currently Builder doesn't build its own version of classifier
         logger.debug("Resolved paths: shared_header_dir=%s, include_dir=%s, rs_generated=%s",
                      self.shared_header_dir, self.include_dir, self.rs_core_generated_module_path)
 
@@ -60,39 +65,47 @@ class Builder:
         self.rust_class_serializer = RustClassSerializer(self.objects, self.rs_core_generated_module_path)
         self.rust_generator = RustModuleGenerator(self.rs_core_generated_module_path)
         self.hierarchy_serializer = HierarchySerializer(self.objects, self.rs_core_generated_module_path)
+        self.override_serializer = OverrideSerializer(self.overrides, self.rs_core_generated_module_path)
         logger.debug("Builder initialization complete")
 
     def _inject_unknown_obj(self): 
         self.objects.insert(0, Object("unknown", "UNKNOWN_classify", "UNKNOWN_extract"))
 
+    def override(self, o: Override): 
+        self.overrides.append(o)
+        return self 
+
     def build(self): 
         logger.info("Starting full build")
 
-        logger.info("Step 1/9: Building MuPDF")
+        logger.info("Step 1/10: Building MuPDF")
         self.mupdf_builder.build()
 
-        logger.info("Step 2/9: Generating Rust module")
+        logger.info("Step 2/10: Generating Rust module")
         self.rust_generator.generate()
 
-        logger.info("Step 3/9: Generating Rust class serializer")
+        logger.info("Step 3/10: Generating Rust class serializer")
         self.rust_class_serializer.generate()
 
-        logger.info("Step 4/9: Generating C++ class serializer")
+        logger.info("Step 4/10: Generating C++ class serializer")
         self.cpp_class_serializer.generate()
 
-        logger.info("Step 5/9: Generating hierarchy serializer")
+        logger.info("Step 5/10: Generating hierarchy serializer")
         self.hierarchy_serializer.generate()
+        
+        logger.info("Step 6/10: Generate overrides to Rust")
+        self.override_serializer.serialize()
 
-        logger.info("Step 6/9: Copying headers")
+        logger.info("Step 7/10: Copying headers")
         self.header_serializer.copy()
 
-        logger.info("Step 7/9: Validating user function map")
+        logger.info("Step 8/10: Validating user function map")
         self.func_map_validator.validate()
 
-        logger.info("Step 8/9: Generating C++ function map")
+        logger.info("Step 9/10: Generating C++ function map")
         self.cpp_func_map_generator.generate()
 
-        logger.info("Step 9/9: Building user C++ project")
+        logger.info("Step 10/10: Building user C++ project")
         self.user_cpp_builder.build()
 
         logger.info("Build complete")
