@@ -128,11 +128,19 @@ impl ThreadPool {
         Some(())
     }
 
-    pub fn schedule(&mut self, class: KnownObject, page: Page) -> () {
+    pub fn classify(&mut self, class: KnownObject, page: Page) -> () {
         self.queue.push(PendingJob {
             class,
             page,
             job_type: JobType::Classification,
+        })
+    }
+
+    pub fn extract(&mut self, class: KnownObject, page: Page) -> () {
+        self.queue.push(PendingJob {
+            class,
+            page,
+            job_type: JobType::Extraction,
         })
     }
 
