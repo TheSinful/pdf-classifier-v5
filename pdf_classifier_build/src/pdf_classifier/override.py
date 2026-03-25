@@ -19,4 +19,4 @@ class BlankAfterClassOverride(Override):
         super().__init__()
     
     def serialize(self) -> str:
-        return "BlankAfterClass " + self.for_class
+        return f"BlankAfter{{ config: KnownObject::{self.for_class.upper()} }}"
