@@ -1,6 +1,8 @@
+use crate::constraints::overrides::OverrideAction;
 use crate::debug_assert_if;
 use crate::ffi::UserResult;
 use crate::generated::generated_object_types::KnownObject;
+use crate::generated::overrides::OVERRIDES;
 use crate::threading::pool::JobResult;
 use crate::{
     context::{Context, ContextError, ContextUpdateHistory},
@@ -13,7 +15,7 @@ use std::path::PathBuf;
 mod defer;
 mod error;
 
-use defer::DeferenceClassifier;
+const STEP_COUNT: usize = 1;
 
 pub struct Classifier {
     pub current_page: Page,
@@ -102,8 +104,7 @@ impl Classifier {
             });
         }
 
-        let mut history = ContextUpdateHistory::new();
-
+        let history = ContextUpdateHistory::new();
         let winners = self.inferencer.infer(ctx, vec![self.current_page])?;
 
         debug_assert_if!(
@@ -112,19 +113,74 @@ impl Classifier {
             "Should've only received one winner from Inferencer while stepping sequentially."
         );
 
-        // may be a better way to do this, but works as a band-aid for now.
-        if winners[0] != KnownObject::UNKNOWN {
-            self.thread_pool.schedule(winners[0], self.current_page);
+        let winner = winners[0];
+        if winner == KnownObject::UNKNOWN {
+            return self.decide_as(KnownObject::UNKNOWN, ctx, history);
         }
 
-        ctx.decide(self.current_page, winners[0], &mut history)?;
+        match self._override(winner, ctx) {
+            Some(action) => return self.handle_override(action, ctx, history),
+            None => {}
+        }
+
+        self.thread_pool.classify(winner, self.current_page);
+        self.decide_as(winner, ctx, history)
+    }
+
+    fn handle_override(
+        &mut self,
+        override_result: OverrideAction,
+        ctx: &mut Context,
+        history: ContextUpdateHistory,
+    ) -> Result<ClassifcationStep, ClassificationError> {
+        match override_result {
+            OverrideAction::Skip => self.decide_as(KnownObject::UNKNOWN, ctx, history),
+            OverrideAction::InferenceAs(class) => {
+                self.thread_pool.classify(class, self.current_page);
+                self.decide_as(class, ctx, history)
+            }
+            OverrideAction::ClassifyAs(class) => {
+                self.thread_pool.extract(class, self.current_page);
+                self.decide_as(class, ctx, history)
+            }
+        }
+    }
+
+    fn decide_as(
+        &mut self,
+        class: KnownObject,
+        ctx: &mut Context,
+        mut history: ContextUpdateHistory,
+    ) -> Result<ClassifcationStep, ClassificationError> {
+        ctx.decide(self.current_page, class, &mut history)?;
         self.current_page.num += STEP_COUNT as u32;
 
-        Ok(ClassifcationStep {
+        return Ok(ClassifcationStep {
+            pages_iterated_over: STEP_COUNT,
             context_updates: history,
             notes: "".to_string(),
-            pages_iterated_over: STEP_COUNT,
-        })
+        });
+    }
+
+    fn _override(&self, winner: KnownObject, ctx: &Context) -> Option<OverrideAction> {
+        for over in OVERRIDES {
+            let action = over.eval(ctx, winner, self.current_page);
+            if action.is_none() {
+                continue;
+            }
+
+            let action = action.unwrap();
+            log::trace!(
+                "Override {} forced condition {} for page {}!",
+                over.to_string(),
+                action.to_string(),
+                self.current_page
+            );
+
+            return Some(action);
+        }
+
+        None
     }
 
     fn poll(&mut self) -> Option<()> {
@@ -136,8 +192,10 @@ impl Classifier {
             return None;
         }
 
-        for result in results.unwrap() {
-            match result {
+        results
+            .into_iter()
+            .flatten()
+            .for_each(|result| match result {
                 JobResult::Classification {
                     page,
                     res,
@@ -148,8 +206,7 @@ impl Classifier {
                     res,
                     as_class,
                 } => self.handle_extraction_result(page, res, as_class),
-            }
-        }
+            });
 
         Some(())
     }
