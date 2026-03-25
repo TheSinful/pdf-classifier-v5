@@ -169,10 +169,10 @@ class RustClassSerializer(Serializer):
         """)
         
     def _begin_impl_block(self) -> None: 
-        self.data += f"impl {self.enum_name} " + "{{"
+        self.data += f"impl {self.enum_name} " + "{"
     
     def _end_impl_block(self) -> None: 
-        self.data += "}}"
+        self.data += "}"
     
     def _from_u8_impl(self) -> None: 
         from_u8_cases = [
