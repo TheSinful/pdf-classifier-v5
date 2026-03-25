@@ -5,7 +5,7 @@ use crate::threading::pool::*;
 #[test]
 fn test_poll() {
     let mut pool = ThreadPool::new(4, get_SMALL_TEST_DOC_test_path());
-    pool.schedule(KnownObject::CHAPTER, 0u32.into());
+    pool.classify(KnownObject::CHAPTER, 0u32.into());
 
     let mut _prev = 0;
     let mut _classified = false;
