@@ -3,6 +3,7 @@
 #include <shared/result.h>
 #include <mupdf/fitz.h>
 #include <thread>
+#include <format>
 
 struct MySharedData
 {
@@ -37,7 +38,7 @@ Result *extract(uint32_t page, fz_context *ctx, fz_document *doc, void *shared)
 
     if (data->page_count != 42 || data->confidence != 0.95)
     {
-        return Result::fail("internal shared data differs from what was provided.");
+        return Result::fail(std::format("internal shared data differs from what was provided. given {} and {}", data->page_count, data->confidence));
     }
     else
     {
