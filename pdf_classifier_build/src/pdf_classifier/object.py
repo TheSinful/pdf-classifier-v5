@@ -17,10 +17,10 @@ class Object:
     _extract_func_name: str
     is_organizational: bool
     
-    def __init__(self, name: str, _classify_func_name: str, _extracted_func_name: str, is_organizational: bool = False) -> None:
+    def __init__(self, name: str, _classify_func_name: str, _extracted_func_name: str, is_organizational: bool = False, pair: Optional[PAIR_TYPE] = None) -> None:
         self.name = name 
         self.children = []
-        self.pair = None
+        self.pair = pair
         self._classify_func_name = _classify_func_name
         self._extract_func_name = _extracted_func_name
         self.is_organizational = is_organizational
@@ -91,8 +91,8 @@ class ObjectFactory:
 
 class ObjectBuilder: 
     _name: str 
-    _parent: Optional[ReferenceType[Object]] = None
-    _pair: Optional[PAIR_TYPE] = None
+    _parent: Optional[ReferenceType[Object]]
+    _pair: Optional[PAIR_TYPE]
     _classify_func: UserFunc 
     _extract_func: UserFunc
     _organizational: bool
@@ -101,23 +101,25 @@ class ObjectBuilder:
     
     def __init__(self, factory: ObjectFactory): 
         self._factory = factory
+        self._parent = None 
+        self._pair = None 
     
     def name(self, name: str) -> "ObjectBuilder": 
         self._name = name
         return self
     
     def child_of(self, parent_name: str) -> "ObjectBuilder": 
-        match = self._factory._find_obj(parent_name)
+        match: Optional[ReferenceType[Object]] = self._factory._find_obj(parent_name)
         if match is None: 
             raise RuntimeError("No object exists with name " + parent_name)
         
         self._parent = match
+        
         return self
     
     def pair_to(self, pair_name: str, order: PAIR_ORDER) -> "ObjectBuilder": 
         if order == 1: 
             return self # todo: need some validation to ensure that the pair is defined later
-        
         match = self._factory._find_obj(pair_name)
         if match is None: 
             raise RuntimeError("No object exists with name " + pair_name)
@@ -174,11 +176,31 @@ class ObjectBuilder:
         if not hasattr(self, "_organizational"): 
             self._organizational = False
         
-        obj: Object = Object(self._name, self._classify_func.name, self._extract_func.name, self._organizational)
+        obj: Object = Object(self._name, self._classify_func.name, self._extract_func.name, self._organizational, self._pair)
+        
         if self._pair is not None: 
-            match = self._factory._find_obj(self._pair[0]().name)  # type: ignore (safe)
-            match()._pair = (ref(obj), 1) # type: ignore
+            second_in_pair_obj = self._pair[0]()
+            assert second_in_pair_obj is not None, "inner pair should've been looked up"
             
+            match = self._factory._find_obj(second_in_pair_obj.name)
+            assert match is not None, f"obj {second_in_pair_obj.name} should be defined prior to {obj.name}"
+            
+            match_deref = match()
+            assert match_deref is not None, f"obj {second_in_pair_obj.name} should be defined prior to {obj.name}"
+                        
+            match_deref.pair = (ref(obj), 1)
+            
+        if self._parent is not None: 
+            parent_deref = self._parent()
+            assert parent_deref is not None, "inner pair should've been looked up" 
+            
+            match = self._factory._find_obj(parent_deref.name) 
+            assert match is not None, f"obj {parent_deref.name} should be defined prior to {obj.name}"
+            
+            match_deref = match()
+            assert match_deref is not None, f"obj {parent_deref.name} should be defined prior to {obj.name}"
+            match_deref.children.append(ref(obj))
+        
         return self._factory._finalize(
             obj,
             self._classify_func, 
