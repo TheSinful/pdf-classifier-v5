@@ -266,7 +266,7 @@ pub unsafe fn extract(
     shared: &Shared,
     ident: KnownObject,
     page: u32,
-) -> ExtractionResult /* placeholder */ {
+) -> ExtractionResult {
     let_cxx_string!(ident_to_cxx_str = ident.to_string());
 
     let call = bridge::call_extract(ctx, doc, shared, &ident_to_cxx_str, page)
