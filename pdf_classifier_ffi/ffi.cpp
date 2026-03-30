@@ -179,7 +179,9 @@ std::unique_ptr<SharedData> extract_shared_payload(const std::unique_ptr<OpaqueR
         throw std::runtime_error("Attempted to access payload on a FAIL result.");
     }
 
-    return std::make_unique<SharedData>(inner->payload);
+    std::unique_ptr<SharedData> ptr = std::make_unique<SharedData>(inner->payload);
+    inner->payload = nullptr;
+    return ptr;
 }
 
 const std::string &extract_error_result(const std::unique_ptr<OpaqueResult> &r)
