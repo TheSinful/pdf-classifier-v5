@@ -1,7 +1,7 @@
 use crate::{
     generated::{
         generated_object_types::{KnownObject, OBJECT_COUNT, ObjectCastError},
-        reflected_objects::OBJECTS,
+        reflected_objects::{OBJECTS, is_independent},
     },
     page::Page,
     result_map::ClassifierResultMap,
@@ -43,7 +43,7 @@ impl Context {
     }
 
     pub fn previous_page_inference(&self, from_page: Page) -> &KnownObject {
-        if from_page.num == 0 {
+        if self.is_first_page(from_page) {
             panic!("Attempted to access previous page of page 0 (no negative pages exist)")
         } else if from_page.num > self.end_page.num {
             panic!(
@@ -73,16 +73,18 @@ impl Context {
             return Ok(());
         }
 
+        if !is_independent(class) {
+            return Ok(());
+        }
+
         // todo: need fallback to ensure that if on this decision we're incorrect, that we can revert correctly.
         let current_discrim: u8 = class.into();
-
-        let current_parent = self.current_parent;
-        let parent_discrim: u8 = current_parent.into();
-        if current_discrim > parent_discrim {
+        let parent_discrim: u8 = self.current_parent.into();
+        if current_discrim != parent_discrim {
+            log::trace!("current parent updated to {}", class.to_string());
             self.current_parent = class;
         }
 
         Ok(())
     }
-
 }
