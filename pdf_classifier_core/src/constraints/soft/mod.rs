@@ -4,17 +4,17 @@
 // This is also to leave some space for future soft-constraints especially
 // ones which have more importance.
 
-pub mod pair_rewards;
-pub mod skipped_children;
+pub mod natural_child;
+pub mod first_in_pair;
 
 use super::impl_constraint_enum;
+use crate::constraints::Constraint;
+
 use crate::context::Context;
 use crate::generated::generated_object_types::KnownObject;
 use crate::page::Page;
 use crate::score::Score;
-use crate::constraints::Constraint;
-use pair_rewards::PairRewards;
-use skipped_children::SkippedChildrenConstraint;
+use natural_child::NaturalChild;
 
 /// Marker trait that indicates self penalizes the returned evaluation
 /// (or rather is -f32)
@@ -35,6 +35,6 @@ pub trait SoftConstraint: Constraint {
 impl_constraint_enum!(
     SoftConstraints,
     Score,
-    REWARD_PairOrder = PairRewards,
-    PENALTY_SkippedChildren = SkippedChildrenConstraint
+    REWARD_IsNaturalChild = NaturalChild,
+    REWARD_FirstInPair = first_in_pair::FirstInPairConstraint
 );
