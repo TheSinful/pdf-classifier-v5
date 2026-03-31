@@ -220,20 +220,20 @@ class TestIsSecondInPairMethod:
 
 class TestToStringImpl:
     def test_impl_block_present(self, ser: RustClassSerializer):
-        ser._to_str_impl()
+        ser._display_impl()
         assert "impl ToString for KnownObject {" in ser.data
 
     def test_fn_signature(self, ser: RustClassSerializer):
-        ser._to_str_impl()
+        ser._display_impl()
         assert "fn to_string(&self) -> String {" in ser.data
 
     def test_all_variants_map_to_lowercase_name(self, ser: RustClassSerializer):
-        ser._to_str_impl()
+        ser._display_impl()
         for name in ("unknown", "chapter", "subchapter", "diagram", "datatable"):
             assert f'"{name}".to_string()' in ser.data
 
     def test_variant_names_are_uppercase_in_match_arm(self, ser: RustClassSerializer):
-        ser._to_str_impl()
+        ser._display_impl()
         for name in ("UNKNOWN", "CHAPTER", "SUBCHAPTER", "DIAGRAM", "DATATABLE"):
             assert f"KnownObject::{name}" in ser.data
 

@@ -32,7 +32,7 @@ class RustClassSerializer(Serializer):
         self._is_first_in_pair_method()
         self._is_second_in_pair_method()
         self._end_impl_block()
-        self._to_str_impl()
+        self._display_impl()
         self._obj_cast_err_enum()
         self._from_str_impl()
         self._from_u8_impl()
@@ -58,17 +58,17 @@ class RustClassSerializer(Serializer):
             }}
         """)
     
-    def _to_str_impl(self) -> None:
-        to_str_cases = [
-            f'{self.enum_name}::{obj.name.upper()} => "{obj.name}".to_string(),'
+    def _display_impl(self) -> None:
+        display_cases = [
+            f'{self.enum_name}::{obj.name.upper()} => write!(f, "{obj.name}"),'
             for obj in self.objects
         ]
 
         self.data += textwrap.dedent(f"""
-            impl ToString for {self.enum_name} {{
-                fn to_string(&self) -> String {{
+            impl std::fmt::Display for {self.enum_name} {{
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {{
                     match self {{
-                        {self._fmt_payload(to_str_cases)}
+                        { self._fmt_payload(display_cases) }
                     }}
                 }}
             }}
