@@ -5,7 +5,7 @@
             "includePath": [
                 "${workspaceFolder}/**",
                 "${vcpkgRoot}/x64-windows/include", 
-                "${workspaceFolder}/build/include"
+                "${workspaceFolder}/examples/build/include"
             ],
             "defines": ["_DEBUG", "UNICODE", "_UNICODE"],
             "windowsSdkVersion": "10.0.22621.0",
