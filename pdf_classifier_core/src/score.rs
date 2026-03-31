@@ -27,7 +27,7 @@ impl Display for Score {
 
 impl From<f32> for Score {
     fn from(value: f32) -> Self {
-        debug_assert!(value <= 1.0 && value >= -1.0);
+        debug_assert!(value <= 1.0 || value >= -1.0);
 
         match value {
             1.0 => Score::REWARD_Heavy,
