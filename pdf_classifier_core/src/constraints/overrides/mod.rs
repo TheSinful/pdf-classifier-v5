@@ -1,5 +1,7 @@
 mod blank_after;
 
+use std::fmt::Display;
+
 pub use blank_after::BlankAfter;
 
 use crate::constraints::Constraint;
@@ -14,12 +16,12 @@ pub enum OverrideAction {
     ClassifyAs(KnownObject),
 }
 
-impl ToString for OverrideAction {
-    fn to_string(&self) -> String {
+impl Display for OverrideAction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            OverrideAction::Skip => "skip".to_string(),
-            OverrideAction::InferenceAs(class) => format!("inference as {}", class.to_string()),
-            OverrideAction::ClassifyAs(class) => format!("classify as {}", class.to_string()),
+            OverrideAction::Skip => write!(f, "skip"),
+            OverrideAction::InferenceAs(class) => write!(f, "inference as {}", class),
+            OverrideAction::ClassifyAs(class) => write!(f, "classify as {}", class),
         }
     }
 }
