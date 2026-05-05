@@ -4,7 +4,6 @@ use std::path::PathBuf;
 #[ctor::ctor]
 fn init_tests() {
     init_logger();
-    set_SMALL_TEST_DOC_test_path();
     set_LARGE_TEST_DOC_test_path();
     set_TEST_OUTPUT_DIR_test_path();
 }
@@ -65,10 +64,8 @@ macro_rules! def_test_path {
     };
 }
 
-def_test_path!(SMALL_TEST_DOC, "../data/small_test_doc.pdf");
 def_test_path!(LARGE_TEST_DOC, "../data/large_test_doc.pdf");
 def_test_path!(TEST_OUTPUT_DIR, "target/classifier_tests", true);
-
 
 fn init_logger() {
     env_logger::builder()
