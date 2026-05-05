@@ -1,11 +1,12 @@
+use crate::constants::test_constants::FIRST_CHAPTER_PAGE;
 use crate::generated::generated_object_types::KnownObject;
-use crate::tests::init::get_SMALL_TEST_DOC_test_path;
+use crate::tests::init::get_LARGE_TEST_DOC_test_path;
 use crate::threading::pool::*;
 
 #[test]
 fn test_poll() {
-    let mut pool = ThreadPool::new(4, get_SMALL_TEST_DOC_test_path());
-    pool.classify(KnownObject::CHAPTER, 0u32.into());
+    let mut pool = ThreadPool::new(4, get_LARGE_TEST_DOC_test_path());
+    pool.classify(KnownObject::CHAPTER, FIRST_CHAPTER_PAGE.into());
 
     let mut _prev = 0;
     let mut _classified = false;

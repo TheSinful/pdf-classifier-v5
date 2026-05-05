@@ -14,7 +14,8 @@ pub struct Context {
     pub start_page: Page,
     pub end_page: Page,
     pub current_parent: KnownObject,
-    pub prev_parents: ClassifierResultMap<KnownObject>,
+    pub prev_parents: ClassifierResultMap,
+    pub guarantee_failures: ClassifierResultMap,
 }
 
 pub enum ContextUpdate {
@@ -32,13 +33,16 @@ pub type ContextUpdateHistory = Vec<ContextUpdate>;
 
 impl Context {
     pub fn new(start_page: Page, end_page: Page) -> Self {
+        let page_count = (end_page.num - start_page.num) as usize;
+
         Self {
             pages: HashMap::new(),
-            page_count: (end_page.num - start_page.num) as usize,
+            page_count,
             start_page,
             end_page,
             current_parent: OBJECTS[0].name,
             prev_parents: ClassifierResultMap::with_capacity(OBJECT_COUNT as usize),
+            guarantee_failures: ClassifierResultMap::with_capacity(page_count),
         }
     }
 
@@ -57,6 +61,22 @@ impl Context {
 
     pub fn is_first_page(&self, page: Page) -> bool {
         self.start_page == page
+    }
+
+    pub fn guarantee_failure_of(&mut self, class: KnownObject, page: Page) -> () {
+        self.guarantee_failures.insert_in_page(page, class);
+    }
+
+    fn update_current_parent(
+        &mut self,
+        page: Page,
+        class: KnownObject,
+        difference_history: &mut ContextUpdateHistory,
+    ) -> () {
+        log::trace!("current parent updated to {}", class.to_string());
+        self.prev_parents.insert_in_page(page, self.current_parent);
+        self.current_parent = class;
+        difference_history.push(ContextUpdate::NewParent(class));
     }
 
     pub fn decide(
@@ -81,10 +101,9 @@ impl Context {
         let current_discrim: u8 = class.into();
         let parent_discrim: u8 = self.current_parent.into();
         if current_discrim != parent_discrim {
-            log::trace!("current parent updated to {}", class.to_string());
-            self.current_parent = class;
+            self.update_current_parent(page, class, difference_history);
         }
 
-        Ok(())
+        return Ok(());
     }
 }

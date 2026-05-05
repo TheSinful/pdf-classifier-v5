@@ -200,6 +200,8 @@ class ObjectBuilder:
             match_deref = match()
             assert match_deref is not None, f"obj {parent_deref.name} should be defined prior to {obj.name}"
             match_deref.children.append(ref(obj))
+            
+        
         
         return self._factory._finalize(
             obj,

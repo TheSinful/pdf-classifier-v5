@@ -33,6 +33,10 @@ class HierarchySerializer(Serializer):
         self._is_pair_helper_fn()
         self._is_root_helper_fn()
         self._is_independent_helper_fn()
+        self._get_global_independents_fn()
+        self._has_dependents_fn()
+        self._get_all_dependents_fn()
+        self._get_all_independents_fn()
         self._dump_data(self.out_path, self.data)
         logger.debug("Hierarchy serializer done")
     
@@ -212,7 +216,7 @@ class HierarchySerializer(Serializer):
             lines.append(f"    {val_str}, // {obj_name}")
         
         all_lines = "\n".join(lines)
-        return f"const {array_name}: [bool; OBJECT_COUNT as usize] = [\n{all_lines}\n];"
+        return f"pub const {array_name}: [bool; OBJECT_COUNT as usize] = [\n{all_lines}\n];"
     
     def _format_matrix_rows(self, matrix: list[list[bool]], matrix_name: str) -> str:
         """Format a boolean matrix as Rust constant declaration"""
@@ -225,7 +229,7 @@ class HierarchySerializer(Serializer):
             rows.append(f"    [{bool_str}],")
         
         all_rows = "\n".join(rows)
-        return f"const {matrix_name}: TableMatrix = [\n{all_rows}\n];"
+        return f"pub const {matrix_name}: TableMatrix = [\n{all_rows}\n];"
     
     def _build_valid_children_matrix(self) -> list[list[bool]]:
         """Build matrix where [parent_idx][child_idx] = True if child can be a child of parent"""
@@ -254,3 +258,84 @@ class HierarchySerializer(Serializer):
         # Start traversal from root
         traverse(self.objects[1])
         return matrix
+
+    def _get_global_independents_fn(self) -> None: 
+        self.data += textwrap.dedent("""
+            pub fn get_global_independents() -> Vec<KnownObject> {
+                let mut res = vec![];
+
+                for i in 0..OBJECT_COUNT {
+                    let class = i
+                        .try_into()
+                        .expect("independents array should align to KnownObject discriminants.");
+
+                    if is_independent(class) {
+                        res.push(class);
+                    }
+                }
+
+                res
+            }
+        """)
+
+    def _has_dependents_fn(self) -> None: 
+        self.data += textwrap.dedent("""
+            pub fn has_dependents(class: KnownObject) -> bool {
+                for (child_discrim, is_child) in VALID_CHILDREN[class as usize].into_iter().enumerate() {
+                    let is_independent = INDEPENDENTS[child_discrim];
+
+                    if !is_independent && is_child {
+                        return true;
+                    }
+                }
+
+                false
+            }
+        """)
+        
+    def _get_all_dependents_fn(self) -> None: 
+        self.data += textwrap.dedent("""
+            pub fn get_all_dependents(under: KnownObject) -> Vec<KnownObject> {
+                let mut res = vec![];
+
+                let mut current = under;
+                let under_class = loop {
+                    if has_dependents(current) {
+                        break current;
+                    }
+
+                    let independents = get_all_independents(current);
+                    match independents.first() {
+                        Some(s) => current = *s,
+                        None => panic!("no dependent exists under class {}!", under),
+                    };
+                };
+
+                for obj in 0..OBJECT_COUNT {
+                    let class = obj
+                        .try_into()
+                        .expect("independents array should align to KnownObject discriminants.");
+
+                    if !is_independent(class) && is_child(under_class, class) {
+                        res.push(class);
+                    }
+                }
+
+                res
+            }
+        """)
+        
+    def _get_all_independents_fn(self) -> None: 
+        self.data += textwrap.dedent("""
+            pub fn get_all_independents(under: KnownObject) -> Vec<KnownObject> {
+                let mut res: Vec<KnownObject> = vec![];
+
+                for (discrim, is_child) in VALID_CHILDREN[under as usize].into_iter().enumerate() {
+                    if is_child {
+                        res.push((discrim as u8).try_into().unwrap());
+                    }
+                }
+
+                res
+            }
+        """)

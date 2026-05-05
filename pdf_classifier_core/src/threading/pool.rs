@@ -14,9 +14,9 @@ use std::{
 };
 
 pub struct ThreadPool {
+    pub queue: Vec<PendingJob>,
     busy_workers: Vec<WorkerThread>,
     available_workers: Vec<WorkerThread>, // worker threads live aslong as the classification
-    queue: Vec<PendingJob>,
     classification_futures:
         FuturesUnordered<Box<dyn Future<Output = ClassifyFuturePayload> + 'static + Unpin>>,
     extraction_futures:
@@ -25,7 +25,7 @@ pub struct ThreadPool {
     // current_defer: IncompleteDeferBlockPtr,
 }
 
-struct PendingJob {
+pub struct PendingJob {
     class: KnownObject,
     page: Page,
     job_type: JobType,
@@ -52,6 +52,11 @@ impl ThreadPool {
             let worker = WorkerThread::spawn(doc_path.clone(), i as u32);
             available_workers.push(worker);
         }
+
+        log::trace!(
+            "initialized threadpool with {} workers",
+            available_workers.len()
+        );
 
         Self {
             available_workers,
@@ -81,7 +86,7 @@ impl ThreadPool {
                 fut.worker_id,
             ));
 
-            self.push_worker_to_available(fut.worker_id);
+            self.push_worker_to_available(fut.worker_id, &fut.page);
         }
 
         while let Poll::Ready(Some(fut)) = self.extraction_futures.poll_next_unpin(&mut cx) {
@@ -92,7 +97,7 @@ impl ThreadPool {
                 fut.worker_id,
             ));
 
-            self.push_worker_to_available(fut.worker_id);
+            self.push_worker_to_available(fut.worker_id, &fut.page);
         }
 
         if self.exhausted(&results) {
@@ -102,33 +107,42 @@ impl ThreadPool {
         }
     }
 
+    pub fn available_workers_count(&self) -> usize {
+        self.available_workers.len()
+    }
+
     fn exhausted(&self, results: &Vec<JobResult>) -> bool {
         self.queue.is_empty() && results.is_empty() && self.busy_workers.is_empty()
     }
 
     fn work_available_worker(&mut self, worker: WorkerThread) -> Option<()> {
-        let pending = self.queue.pop();
-        if pending.is_none() {
+        let Some(pending) = self.queue.pop() else {
+            self.available_workers.push(worker);
             return None;
-        }
+        };
 
-        let pending = pending.unwrap();
         match pending.job_type {
             JobType::Classification => {
                 self.push_classification_to_worker(pending.class, pending.page, &worker)
             }
             JobType::Extraction => {
-                let shared_data = self.pending_extract_shared.remove(&pending.page).expect(&format!("Expected a shared a viable shared output from classify, but none existed for page {:?}", pending.page));
+                let shared_data = self.pending_extract_shared.remove(&pending.page).expect(&format!("Expected a viable shared output from extraction of page {}, but none existed for page", pending.page));
 
                 self.push_extraction_to_worker(pending.class, pending.page, shared_data, &worker)
             }
         };
 
+        log::trace!("worker {} is now busy", worker.id);
         self.busy_workers.push(worker);
         Some(())
     }
 
     pub fn classify(&mut self, class: KnownObject, page: Page) -> () {
+        log::trace!(
+            "pushing new classification job to queue, {} available workers currently",
+            self.available_workers_count()
+        );
+
         self.queue.push(PendingJob {
             class,
             page,
@@ -137,6 +151,11 @@ impl ThreadPool {
     }
 
     pub fn extract(&mut self, class: KnownObject, page: Page) -> () {
+        log::trace!(
+            "pushing new extraction job to queue, {} available workers currently",
+            self.available_workers_count()
+        );
+
         self.queue.push(PendingJob {
             class,
             page,
@@ -144,13 +163,33 @@ impl ThreadPool {
         })
     }
 
-    fn push_worker_to_available(&mut self, id: u32) -> () {
+    pub fn classify_unchecked(&mut self, class: KnownObject, page: Page) -> () {
+        let worker = self
+            .available_workers
+            .pop()
+            .expect("should've had an available worker when spawning a thread unsafely.");
+
+        log::trace!(
+            "[WORKER {}] unsafely classifying page {} as class {}",
+            worker.id,
+            page,
+            class
+        );
+
+        self.push_classification_to_worker(class, page, &worker);
+        self.busy_workers.push(worker);
+    }
+
+    fn push_worker_to_available(&mut self, id: u32, page: &Page) -> () {
         let found = self
             .busy_workers
             .iter()
             .position(|x| x.id == id)
             .map(|idx| self.busy_workers.remove(idx))
-            .expect(&format!("Expected a worker with id {}", id));
+            .expect(&format!(
+                "Expected a worker with id {} from page {}",
+                id, page.num
+            ));
 
         self.available_workers.push(found);
     }
@@ -174,11 +213,7 @@ impl ThreadPool {
                 let res_ptr = Box::new(res);
 
                 self.pending_extract_shared.insert(page, res_ptr);
-                self.queue.push(PendingJob {
-                    class,
-                    page,
-                    job_type: JobType::Extraction,
-                });
+                self.extract(class, page);
 
                 JobResult::Classification {
                     page,
@@ -250,13 +285,11 @@ impl ThreadPool {
         class: KnownObject,
         page: Page,
         worker: &WorkerThread,
-    ) -> Option<()> {
+    ) -> () {
         let call = worker.classify(class, page);
         let fut = Box::new(Box::pin(call));
 
         self.classification_futures.push(fut);
-
-        Some(())
     }
 
     fn push_extraction_to_worker(
@@ -265,12 +298,10 @@ impl ThreadPool {
         page: Page,
         res: Box<OkUserResult<Shared>>,
         worker: &WorkerThread,
-    ) -> Option<()> {
+    ) -> () {
         let call = worker.extract(class, res.extract_payload_as_shared(), page);
         let fut = Box::new(Box::pin(call));
 
         self.extraction_futures.push(fut);
-
-        Some(())
     }
 }

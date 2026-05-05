@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use crate::{
     constraints::{
         Constraint,
@@ -21,7 +23,7 @@ impl Override for BlankAfter {
         page: crate::page::Page,
     ) -> Option<OverrideAction> {
         if page == ctx.start_page {
-            return None 
+            return None;
         }
 
         if *ctx.previous_page_inference(page) == self.config {
@@ -32,8 +34,8 @@ impl Override for BlankAfter {
     }
 }
 
-impl ToString for BlankAfter {
-    fn to_string(&self) -> String {
-        format!("BlankAfter<{}>", self.config.to_string())
+impl Display for BlankAfter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "BlankAfter<{}>", self.config.to_string())
     }
 }

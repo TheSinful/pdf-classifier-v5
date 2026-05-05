@@ -33,6 +33,7 @@ pub enum InferenceError {
 
 pub type InferenceResult<T> = std::result::Result<T, InferenceError>;
 
+#[derive(Clone, Copy)]
 pub struct Inferencer;
 
 impl Inferencer {
@@ -44,6 +45,7 @@ impl Inferencer {
         &mut self,
         ctx: &mut Context,
         pages: Vec<Page>,
+        candidates: &KnownObjectList,
     ) -> InferenceResult<Vec<KnownObject>> {
         let mut winners: Vec<KnownObject> = vec![];
         let total_pages = pages.len();
@@ -51,7 +53,9 @@ impl Inferencer {
         for page in pages {
             log::trace!("beginning inference on page {}", page);
 
-            let candidates = KnownObjectList::new()?.filter_by_definitive_constraints(ctx, page)?;
+            let candidates = candidates
+                .clone()
+                .filter_by_definitive_constraints(ctx, page)?;
 
             if candidates.0.len() == 1 {
                 let winner = *candidates.0.last().unwrap();
@@ -95,7 +99,9 @@ impl Inferencer {
 #[cfg(test)]
 mod tests {
     use super::Inferencer;
-    use crate::{context::Context, generated::generated_object_types::KnownObject};
+    use crate::{
+        context::Context, generated::generated_object_types::KnownObject, obj_list::KnownObjectList,
+    };
 
     #[test]
     pub fn test_score_manage_step() {
@@ -103,8 +109,8 @@ mod tests {
         let mut ctx = Context::new(0u32.into(), 9u32.into());
         let mut pages = Vec::new();
         pages.push(0u32.into());
-
-        match manager.infer(&mut ctx, pages) {
+        
+        match manager.infer(&mut ctx, pages, &KnownObjectList::new()) {
             Ok(r) => {
                 assert!(
                     r.len() == 1,

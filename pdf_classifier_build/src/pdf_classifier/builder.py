@@ -8,10 +8,11 @@ from .rust_class_serializer import RustClassSerializer
 from .rust_mod_generator import RustModuleGenerator
 from .object import Object, ObjectFactory
 from .hierarchy_serializer import HierarchySerializer
-from .override import Override
+from .override import Override, OverrideStream
 from .override_serializer import OverrideSerializer
 from pathlib import Path
 import logging
+import shutil
 
 logger = logging.getLogger(__name__)
 
@@ -35,10 +36,12 @@ class Builder:
     rs_core_generated_module_path: Path
     objects: list[Object]
     overrides: list[Override]
+    override_streams: list[OverrideStream]
     
     def __init__(self, build_dir: Path, factory: ObjectFactory,
                  user_cmake_lists_path: Path, **kwargs) -> None:
         self.overrides = []
+        self.override_streams = []
         self.objects = factory._objs
         self._inject_unknown_obj()
         expected_classify_funcs = factory._expected_classify_funcs
@@ -49,12 +52,13 @@ class Builder:
         self.build_root: Path = build_dir
         self.include_dir: Path = build_dir / "include"
         self.shared_header_dir: Path = self.include_dir / "shared" 
-        self.generated_dir: Path = build_dir / "generated"
+        self.generated_dir: Path = self.include_dir / "generated"
         self.mupdf_build_dir: Path = build_dir / "mupdf"
         self.rs_core_generated_module_path: Path = Path(__file__).parent.parent.parent.parent / "pdf_classifier_core" / "src" / "generated" # TODO: change to a defenitive path, currently Builder doesn't build its own version of classifier
         logger.debug("Resolved paths: shared_header_dir=%s, include_dir=%s, rs_generated=%s",
                      self.shared_header_dir, self.include_dir, self.rs_core_generated_module_path)
 
+        self._wipe_stale_generated()
         self.cpp_class_serializer = CppClassSerializer(self.shared_header_dir, self.objects)
         self.cpp_func_map_generator = CppFuncMapGenerator(expected_classify_funcs, expected_extract_funcs, self.shared_header_dir)
         self.user_cpp_builder = UserCppBuilder(self.build_root, self.shared_header_dir, 
@@ -65,14 +69,23 @@ class Builder:
         self.rust_class_serializer = RustClassSerializer(self.objects, self.rs_core_generated_module_path)
         self.rust_generator = RustModuleGenerator(self.rs_core_generated_module_path)
         self.hierarchy_serializer = HierarchySerializer(self.objects, self.rs_core_generated_module_path)
-        self.override_serializer = OverrideSerializer(self.overrides, self.rs_core_generated_module_path)
+        self.override_serializer = OverrideSerializer(self.overrides, self.override_streams, self.rs_core_generated_module_path)
         logger.debug("Builder initialization complete")
+
+    def _wipe_stale_generated(self): 
+        if self.generated_dir.exists(): 
+            shutil.rmtree(self.generated_dir)
 
     def _inject_unknown_obj(self): 
         self.objects.insert(0, Object("unknown", "UNKNOWN_classify", "UNKNOWN_extract"))
 
-    def override(self, o: Override): 
-        self.overrides.append(o)
+    def override(self, o: Override):
+        logger.info("Adding override " + o.serialize())
+        if isinstance(o, OverrideStream): 
+            self.override_streams.append(o)
+        else: 
+            self.overrides.append(o)
+        
         return self 
 
     def build(self): 

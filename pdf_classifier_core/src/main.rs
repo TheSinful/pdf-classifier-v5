@@ -42,7 +42,9 @@
 // ! Maybe utilize a single thread for spawning? So after "cooking" a batch of predictions,
 // ! Send them to the "spawner" thread to handle the spawning, while the main thread continues to predict
 
-mod classifier;
+mod classifiers;
+mod constants;
+mod constraints;
 mod context;
 mod ffi;
 mod generated;
@@ -54,10 +56,6 @@ mod result_map;
 mod score;
 #[cfg(test)]
 mod tests;
-
 mod threading;
-mod constraints;
-
-
 
 fn main() {}

@@ -10,6 +10,7 @@ use crate::generated::generated_object_types::OBJECT_COUNT;
 use crate::inferencer::{InferenceError, InferenceResult};
 use crate::page::Page;
 use crate::score::Score;
+use std::collections::HashSet;
 use std::ops::Deref;
 use std::ops::DerefMut;
 
@@ -36,30 +37,55 @@ impl DerefMut for ScoreList {
     }
 }
 
+#[derive(Clone)]
 pub struct KnownObjectList(pub Vec<KnownObject>);
 
 impl KnownObjectList {
-    pub fn new() -> InferenceResult<Self> {
+    pub fn new() -> Self {
         let mut vec: Vec<KnownObject> = vec![];
 
         for discrim in 0..OBJECT_COUNT {
-            let obj = KnownObject::try_from(discrim)?;
+            let obj = KnownObject::try_from(discrim).unwrap();
             vec.push(obj);
         }
 
         log::trace!("built candidate list with {} objects", vec.len());
 
-        Ok(Self { 0: vec })
+        Self { 0: vec }
+    }
+
+    pub fn from_vec(vec: Vec<KnownObject>) -> Self {
+        log::trace!("built candidate list with {} objects", vec.len());
+
+        Self { 0: vec }
+    }
+
+    pub fn filter_out(self, guaranteed_not_to_be: &Vec<KnownObject>) -> Self {
+        let mut set: HashSet<_> = self.0.into_iter().collect();
+        set.retain(|x| !guaranteed_not_to_be.contains(x));
+
+        Self {
+            0: set.into_iter().collect(),
+        }
+    }
+
+    fn filter_out_failed(mut self, ctx: &Context, page: &Page) -> Self {
+        if let Some(results) = ctx.guarantee_failures.0.get(page) {
+            self = self.filter_out(results);
+        }
+
+        self
     }
 
     pub fn filter_by_definitive_constraints(
-        self,
+        mut self,
         ctx: &Context,
         page: Page,
     ) -> InferenceResult<Self> {
         // ! similar issue to [KnownObjectList::filter_by_hard_constraints], see comment block there.
 
         let mut result = Vec::new();
+        self = self.filter_out_failed(ctx, &page);
 
         for def_constraint_discrim in 0..DEFINITIVE_ENUM_VARIANT_COUNT {
             let def_constraint: DefinitiveConstraints = def_constraint_discrim.try_into()?;
@@ -113,6 +139,7 @@ impl KnownObjectList {
         */
 
         let before_count = self.0.len();
+        self = self.filter_out_failed(ctx, &page);
 
         for hard_constraint in 0..HARD_ENUM_VARIANT_COUNT {
             let constraint: HardConstraints = hard_constraint.try_into()?;
@@ -143,7 +170,9 @@ impl KnownObjectList {
         Ok(self)
     }
 
-    pub fn sort_by_soft_constraints(self, ctx: &Context, page: Page) -> InferenceResult<Self> {
+    pub fn sort_by_soft_constraints(mut self, ctx: &Context, page: Page) -> InferenceResult<Self> {
+        self = self.filter_out_failed(ctx, &page);
+
         fn eval_class(
             ctx: &Context,
             class: KnownObject,
@@ -168,10 +197,16 @@ impl KnownObjectList {
             Ok(())
         }
 
-        let mut scores: Vec<(KnownObject, ScoreList)> = (1..OBJECT_COUNT) // skip unknown variant
+        if self.0.len() <= 1 {
+            return Ok(self);
+        }
+
+        let mut scores: Vec<(KnownObject, ScoreList)> = self
+            .0
+            .iter() // skip unknown variant
             .map(|i| {
                 Ok((
-                    i.try_into()?,
+                    *i,
                     ScoreList {
                         0: Vec::with_capacity(SOFT_ENUM_VARIANT_COUNT as usize),
                     },

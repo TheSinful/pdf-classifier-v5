@@ -69,6 +69,7 @@ def_test_path!(SMALL_TEST_DOC, "../data/small_test_doc.pdf");
 def_test_path!(LARGE_TEST_DOC, "../data/large_test_doc.pdf");
 def_test_path!(TEST_OUTPUT_DIR, "target/classifier_tests", true);
 
+
 fn init_logger() {
     env_logger::builder()
         .filter_level(log::LevelFilter::Trace)

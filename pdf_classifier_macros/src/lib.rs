@@ -1,6 +1,6 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{Ident, Token, parse::Parse, punctuated::Punctuated, Type};
+use syn::{Ident, Token, Type, parse::Parse, punctuated::Punctuated};
 
 struct Variant {
     name: Ident,
@@ -42,7 +42,6 @@ impl Parse for ConstraintInput {
     }
 }
 
-
 #[proc_macro]
 pub fn impl_instansiated_constraint_enum(tokens: TokenStream) -> TokenStream {
     let ConstraintInput {
@@ -75,7 +74,6 @@ pub fn impl_instansiated_constraint_enum(tokens: TokenStream) -> TokenStream {
         quote!(
             Self::#name(_) => write!(f, "{}", stringify!(#name))?,
         )
-        
     });
 
     let enum_variant_count = enum_variants.len();
@@ -110,7 +108,6 @@ pub fn impl_instansiated_constraint_enum(tokens: TokenStream) -> TokenStream {
     .into()
 }
 
-
 #[proc_macro]
 pub fn impl_constraint_enum(tokens: TokenStream) -> TokenStream {
     let ConstraintInput {
@@ -142,7 +139,6 @@ pub fn impl_constraint_enum(tokens: TokenStream) -> TokenStream {
         quote!(
             Self::#name => write!(f, "{}", stringify!(#name))?,
         )
-        
     });
 
     let try_from_arms = variants.iter().enumerate().map(|v| {

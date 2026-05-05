@@ -1,44 +1,19 @@
-use crate::page::Page;
-use std::ops::{Index, IndexMut};
+use crate::{generated::generated_object_types::KnownObject, page::Page};
+use std::collections::HashMap;
+pub struct ClassifierResultMap(pub HashMap<Page, Vec<KnownObject>>);
 
-#[derive(Clone)]
-/// 2D vec which maps page numbers to a list of T 
-pub struct ClassifierResultMap<T> {
-    /// Equivalent to a key-value structure because:
-    /// page_num == i (when i is an index of inner)
-    /// Where the value is just an array of results
-    inner: Vec<Vec<T>>,
-}
-
-impl<T> ClassifierResultMap<T> {
-    pub fn with_capacity(capacity: usize) -> Self {
-        let mut vec: Vec<Vec<T>> = Vec::with_capacity(capacity);
-
-        for _ in 0..capacity {
-            vec.push(Vec::new());
+impl ClassifierResultMap {
+    pub fn insert_in_page(&mut self, page: Page, class: KnownObject) -> () {
+        if let Some(list) = self.0.get_mut(&page) {
+            list.push(class);
+        } else {
+            self.0.insert(page, vec![class]);
         }
-
-        Self { inner: vec }
     }
 
-    pub fn get_page_results(&self, page: Page) -> &Vec<T> {
-        let index: usize = page.into();
-
-        self.inner.index(index)
-    }
-
-    pub fn set_page(&mut self, page: Page, insert: T) -> () {
-        let wrapper = self.get_page_results_mut(page);
-        wrapper.push(insert);
-    }
-
-    pub fn get_page_best_result(&self, page: Page) -> Option<&T> {
-        self.get_page_results(page).last()
-    }
-
-    fn get_page_results_mut(&mut self, page: Page) -> &mut Vec<T> {
-        let index: usize = page.into();
-
-        self.inner.index_mut(index)
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            0: HashMap::with_capacity(capacity),
+        }
     }
 }

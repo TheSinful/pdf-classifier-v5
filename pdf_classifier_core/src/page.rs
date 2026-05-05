@@ -1,4 +1,7 @@
-use std::{fmt::Display, ops::Sub};
+use std::{
+    fmt::Display,
+    ops::{Add, Sub},
+};
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
 pub struct Page {
@@ -43,8 +46,24 @@ impl Sub for Page {
     }
 }
 
+impl Add for Page {
+    type Output = Page;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Page::new(self.num + rhs.num)
+    }
+}
+
 impl Page {
     pub fn new(num: u32) -> Self {
         Page { num }
+    }
+
+    pub fn previous(&self) -> Page {
+        Page { num: self.num - 1 }
+    }
+
+    pub fn next(&mut self) -> () {
+        self.num += 1
     }
 }

@@ -3,12 +3,11 @@ mod hard;
 pub mod overrides;
 mod soft;
 
-pub use pdf_classifier_macros::impl_constraint_enum;
-
-pub use definitive::ENUM_VARIANT_COUNT as DEFINITIVE_ENUM_VARIANT_COUNT;
 pub use definitive::DefinitiveConstraints;
+pub use definitive::ENUM_VARIANT_COUNT as DEFINITIVE_ENUM_VARIANT_COUNT;
 pub use hard::ENUM_VARIANT_COUNT as HARD_ENUM_VARIANT_COUNT;
 pub use hard::HardConstraints;
+pub use pdf_classifier_macros::impl_constraint_enum;
 pub use soft::ENUM_VARIANT_COUNT as SOFT_ENUM_VARIANT_COUNT;
 pub use soft::SoftConstraints;
 
