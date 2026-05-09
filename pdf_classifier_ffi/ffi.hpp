@@ -17,7 +17,14 @@ struct OpaqueDoc
 
 struct SharedData
 {
-    void *ptr; // Result::payload*
+    void *ptr;               // Result::payload*
+    void (*deleter)(void *); // mirrors Result::deleter
+
+    ~SharedData()
+    {
+        if (ptr && deleter)
+            deleter(ptr);
+    }
 };
 
 struct OpaqueResult
