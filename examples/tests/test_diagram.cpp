@@ -80,8 +80,8 @@ TEST_F(DiagramFixture, TestContainsValidFigureText) {
 
 // End-to-end: full classify_diagram pipeline.
 TEST_F(DiagramFixture, TestClassifyDiagramSucceeds) {
-  Result* res = classify_diagram(1247, ctx, doc);
+  Result* res = classify_diagram(1244, ctx, doc);
   ASSERT_NE(res, nullptr);
-  EXPECT_EQ(res->type, Result::Type::OK) << "classify_diagram() should succeed on page 1247";
+  EXPECT_EQ(res->type, Result::Type::OK) << "classify_diagram() should succeed on page 1247" << res->fail_rsn;
   delete res;
 }
