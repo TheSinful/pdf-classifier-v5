@@ -46,12 +46,12 @@ Result* Chapter::extract_chapter_number() {
 void deleter_Chapter(void* p) { delete static_cast<Chapter*>(p); }
 
 Result* classify_chapter(uint32_t page, fz_context* ctx, fz_document* doc) {
-  Chapter* inst = new Chapter(ctx, doc, page);
+  auto inst = std::make_unique<Chapter>(ctx, doc, page);
 
   UNWRAP_RESULT(inst->contains_valid_chapter_text());
   UNWRAP_RESULT(inst->extract_chapter_number());
 
-  return Result::ok(inst, deleter_Chapter);
+  return Result::ok(inst.release(), deleter_Chapter);
 }
 
 Result* extract_chapter(uint32_t page, fz_context* ctx, fz_document* doc, void* shared) {

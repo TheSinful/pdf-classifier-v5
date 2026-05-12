@@ -1,5 +1,6 @@
 #include "subchapter.hpp"
 #include "util.hpp"
+#include <memory>
 #include <regex>
 
 Result* SubChapter::contains_valid_subchapter_text() {
@@ -8,12 +9,12 @@ Result* SubChapter::contains_valid_subchapter_text() {
   int lowercase_frequency = frequency_of("Chapter", compressed_text, 1);
 
   PDF_ASSERT(uppercase_frequency != UPPERCASE_SUBCHAPTER_TEXT_FREQUENCY,
-             "expected {} instances of the string 'CHAPTER' but found {} instances.",
-             UPPERCASE_SUBCHAPTER_TEXT_FREQUENCY, uppercase_frequency);
+             "expected {} instances of the string 'CHAPTER' but found {} instances.", UPPERCASE_SUBCHAPTER_TEXT_FREQUENCY,
+             uppercase_frequency);
 
   PDF_ASSERT(lowercase_frequency != LOWERCASE_SUBCHAPTER_TEXT_FREQUENCY,
-             "expected {} instances of the string 'Chapter' but found {} instances.",
-             LOWERCASE_SUBCHAPTER_TEXT_FREQUENCY, lowercase_frequency);
+             "expected {} instances of the string 'Chapter' but found {} instances.", LOWERCASE_SUBCHAPTER_TEXT_FREQUENCY,
+             lowercase_frequency);
 
   for (PdfText& entry : extracted_text) {
     if (!contains_text("CHAPTER", entry.text)) {
@@ -23,7 +24,7 @@ Result* SubChapter::contains_valid_subchapter_text() {
     bool meets_lower_fontsize_bound = std::abs(entry.font_size - 10.4) <= 2.3;
     bool meets_upper_fontsize_bound = std::abs(entry.font_size - 11.0) <= 2.3;
 
-    if (!meets_lower_fontsize_bound || !meets_upper_fontsize_bound) {
+    if (!meets_lower_fontsize_bound && !meets_upper_fontsize_bound) {
       continue;
     }
 
@@ -49,14 +50,12 @@ Result* SubChapter::extract_subchapter_num() {
 void deleter_SubChapter(void* p) { delete static_cast<SubChapter*>(p); }
 
 Result* classify_subchapter(uint32_t page, fz_context* ctx, fz_document* doc) {
-  SubChapter* inst = new SubChapter(ctx, doc, page);
+  auto inst = std::make_unique<SubChapter>(ctx, doc, page);
 
   UNWRAP_RESULT(inst->contains_valid_subchapter_text());
   UNWRAP_RESULT(inst->extract_subchapter_num());
 
-  return Result::ok(inst, deleter_SubChapter);
+  return Result::ok(inst.release(), deleter_SubChapter);
 }
 
-Result* extract_subchapter(uint32_t page, fz_context* ctx, fz_document* doc, void* shared) {
-  return Result::ok(NULL, NULL);
-}
+Result* extract_subchapter(uint32_t page, fz_context* ctx, fz_document* doc, void* shared) { return Result::ok(NULL, NULL); }

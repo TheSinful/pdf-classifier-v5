@@ -90,6 +90,7 @@ impl Classifier {
     pub fn run(mut self) -> Result<StepList, ClassificationError> {
         loop {
             if self.state.current_page().num == self.end_page.num {
+                // SAFETY: internal classifier is dropped here, therefore taking ownership is safe.
                 let mut state = std::mem::replace(&mut self.state, ClassifierState::Transition);
                 let steps = std::mem::replace(&mut state.committed().steps, vec![]);
                 break Ok(steps);

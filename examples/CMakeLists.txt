@@ -5,7 +5,7 @@ find_package(mupdf REQUIRED)
 
 set(CMAKE_CXX_STANDARD 20)
 #             shouldn't be change
-add_library(classifier_intermediary STATIC test.cpp chapter.cpp subchapter.cpp) # Insert .cpp files here 
+add_library(classifier_intermediary STATIC test.cpp chapter.cpp subchapter.cpp diagram.cpp table.cpp) # Insert .cpp files here 
 
 target_link_libraries(classifier_intermediary PRIVATE mupdf::mupdf)
 
@@ -24,6 +24,8 @@ target_sources(classifier_intermediary
     chapter.hpp
     util.hpp
     subchapter.hpp
+    diagram.hpp
+    table.hpp
 )
 
 
@@ -32,3 +34,7 @@ install(TARGETS classifier_intermediary
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib
 )
+
+enable_testing()
+
+add_subdirectory(tests)

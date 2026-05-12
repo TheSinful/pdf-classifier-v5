@@ -11,8 +11,8 @@ factory = ObjectFactory("test.hpp")
 
 factory.new().name("chapter").header("chapter.hpp").classify("classify_chapter").extract("extract_chapter").organizational().build()
 factory.new().name("subchapter").header("subchapter.hpp").classify("classify_subchapter").extract("extract_subchapter").child_of("chapter").organizational().build()
-factory.new().name("diagram").classify("classify").extract("extract").child_of("subchapter").pair_to("datatable", 1).build()
-factory.new().name("datatable").classify("classify").extract("extract").child_of("subchapter").pair_to("diagram", 2).build()
+factory.new().name("diagram").header("diagram.hpp").classify("classify_diagram").extract("extract_diagram").child_of("subchapter").pair_to("datatable", 1).build()
+factory.new().name("datatable").header("table.hpp").classify("classify_datatable").extract("extract_datatable").child_of("subchapter").pair_to("diagram", 2).build()
 
 examples_root = Path(__file__).parent
 
