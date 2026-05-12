@@ -1,5 +1,6 @@
 #include "table.hpp"
 #include <array>
+#include <iostream>
 #include <regex>
 #include <string_view>
 
@@ -215,8 +216,9 @@ std::string DataTable::extract_text_from_cell(const TableDataCell& cell) {
         for (fz_stext_char* ch = line->first_char; ch; ch = ch->next) {
           fz_rect char_bbox = fz_rect_from_quad(ch->quad);
 
-          // Check if character intersects with bounding box
-          if (!fz_is_empty_rect(fz_intersect_rect(char_bbox, cell.boundary))) {
+          float cx = (char_bbox.x0 + char_bbox.x1) * 0.5f;
+          float cy = (char_bbox.y0 + char_bbox.y1) * 0.5f;
+          if (cx >= cell.boundary.x0 && cx <= cell.boundary.x1 && cy >= cell.boundary.y0 && cy <= cell.boundary.y1) {
             if (ch->c >= 32) { // Printable character
               lineText += static_cast<char>(ch->c);
             }
@@ -237,17 +239,15 @@ std::string DataTable::extract_text_from_cell(const TableDataCell& cell) {
     if (stext)
       fz_drop_stext_page(ctx, stext);
   }
-  fz_catch(ctx) { throw std::runtime_error("failed to extract text from cell " + std::string(fz_caught_message(ctx))); }
-
-  if (result.empty()) {
-    return "";
+  fz_catch(ctx) {
+    const char* error_msg = fz_caught_message(ctx);
+    throw std::runtime_error("failed to extract text from cell " + std::string(error_msg));
   }
 
-  if (result[0] == ' ') {
+  if (!result.empty() && result[0] == ' ') {
     result.erase(0, 1);
   }
-
-  if (result[result.length() - 1] == ' ') {
+  if (!result.empty() && result[result.length() - 1] == ' ') {
     result.erase(result.length() - 1, 1);
   }
 

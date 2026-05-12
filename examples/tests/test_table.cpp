@@ -123,10 +123,10 @@ TEST_F(DataTableFixture, TestExtractCellsDetailedData) {
 
   // A representative subset of the 25 rows validated in the old test.
   static const ExpectedRow expected[] = {
-      {0, "2540-99-830-1219", "INSTALLATION KIT, EMERGENCY BEACON AND SIREN", "STC50536"},
-      {1, "6220-99-732-0786", "LIGHT, WARNING", "STC3446"},
-      {5, "5340-99-573-6451", "BRACKET, MOUNTING", "STC4242"},
-      {12, "5963-99-663-6041", "AMPLIFIER, AUDIO FREQUENCY", "STC3669"},
+      {1, "2540-99-830-1219", "INSTALLATION KIT, EMERGENCY BEACON AND SIREN", "STC50536"},
+      {2, "6220-99-732-0786", "LIGHT, WARNING", "STC3446"},
+      {6, "5340-99-573-6451", "BRACKET, MOUNTING", "STC4242"},
+      {13, "5963-99-663-6041", "AMPLIFIER, AUDIO FREQUENCY", "STC3669"},
   };
 
   try {
