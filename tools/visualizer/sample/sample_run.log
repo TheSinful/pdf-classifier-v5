@@ -1,0 +1,308 @@
+ INFO Accepted arguments, initializing classifier...
+ TRACE initialized threadpool with 4 workers
+ INFO initialized context with page range: [44,60]
+ start_classifiation_loop from_page=44, to_page=60
+     classification page=44
+      INFO ignoring state change since first page
+         step current_page=44
+          TRACE built candidate list with 5 objects
+             infer page=44, candidates=[UNKNOWN, CHAPTER, SUBCHAPTER, DIAGRAM, DATATABLE]
+              INFO class hit definitive constraint, page=44, hit_constraint=FirstPageRoot, winner=chapter
+              INFO return=CHAPTER
+             _override page=44
+              INFO return=None
+             push_classification_job class=CHAPTER, page=Page(44), available_workers=4
+             decide_as class=CHAPTER, page=Page(44)
+                 increment_current_page from_page=44, to_page=45
+             work_available_worker worker=3
+     classification page=45
+      DEBUG state remained committed.
+         step current_page=45
+          TRACE built candidate list with 5 objects
+             infer page=45, candidates=[UNKNOWN, CHAPTER, SUBCHAPTER, DIAGRAM, DATATABLE]
+              DEBUG no match on definitive constraint, page=45, def_constraint=FirstPageRoot
+              DEBUG no match on definitive constraint, page=45, def_constraint=SecondInPair
+              INFO passed all definitive constraints with no match, page=45
+              TRACE FAIL (IllegalSecondInPair): previous page chapter wasn't a primary pair, while class datatable is a secondary pair
+              DEBUG failed hard constraint, page=45, hard_constraint=IllegalSecondInPair, candidates_remaining=[UNKNOWN, CHAPTER, SUBCHAPTER, DIAGRAM]
+              INFO hard filtering done with: 5 -> 4 candidates, page=45
+                 soft_constraint_score page=Page(45), constraint=REWARD_IsNaturalChild, class=UNKNOWN
+                 soft_constraint_score page=Page(45), constraint=REWARD_IsNaturalChild, class=CHAPTER
+                 soft_constraint_score page=Page(45), constraint=REWARD_IsNaturalChild, class=SUBCHAPTER
+                 soft_constraint_score page=Page(45), constraint=REWARD_IsNaturalChild, class=DIAGRAM
+                 soft_constraint_score page=Page(45), constraint=REWARD_FirstInPair, class=UNKNOWN
+                 soft_constraint_score page=Page(45), constraint=REWARD_FirstInPair, class=CHAPTER
+                 soft_constraint_score page=Page(45), constraint=REWARD_FirstInPair, class=SUBCHAPTER
+                 soft_constraint_score page=Page(45), constraint=REWARD_FirstInPair, class=DIAGRAM
+              TRACE page 45 soft sort complete, top candidate is diagram, (all candidates) [(UNKNOWN, [Neutral, Neutral]), (CHAPTER, [Neutral, Neutral]), (SUBCHAPTER, [Neutral, REWARD_Light]), (DIAGRAM, [Neutral, REWARD_Heavy])] 
+              INFO return=DIAGRAM
+             _override page=45
+              TRACE page=45, override=BlankAfter<chapter>
+              INFO return=Some(Skip)
+             handle_override override_result=Skip
+                 decide_as class=UNKNOWN, page=Page(45)
+                     increment_current_page from_page=45, to_page=46
+     classification page=46
+         schedule_override_stream page=46
+             push_extraction_job class=CHAPTER, page=Page(44), available_workers=3
+              TRACE pushing extraction job: chapter, pg44 (3 workers)
+             polled_results result_count=1
+                 handle_classification_result page=Page(44), class=CHAPTER, res=Ok(())
+             work_available_worker worker=3
+             polled_results result_count=1
+                 handle_extraction_result page=Page(44), class=CHAPTER, res=Ok(OkUserResult { inner: 0x7b42efab70, _data: PhantomData<cxx::string::CxxString> })
+     classification page=46
+         exit_override_stream 
+          INFO beginning override for: MultiPageHierarchyBreak {after: chapter, end_on: subchapter, expected_blank_after_impl: true, fill_with: [DIAGRAM, DATATABLE]}
+          TRACE initialized override step for page: 46
+          TRACE [OVSTR] streaming page 46 as class diagram
+             handle_override override_result=InferAs(DIAGRAM)
+                 push_classification_job class=DIAGRAM, page=Page(46), available_workers=4
+                 decide_as class=DIAGRAM, page=Page(46)
+                     increment_current_page from_page=46, to_page=47
+          TRACE evaluating for exit case on page 47
+             push_unchecked_classification_job class=SUBCHAPTER, page=Page(47), available_workers=4
+             work_available_worker worker=2
+          TRACE initialized override step for page: 47
+          TRACE [OVSTR] streaming page 47 as class datatable
+             handle_override override_result=InferAs(DATATABLE)
+                 push_classification_job class=DATATABLE, page=Page(47), available_workers=3
+                 decide_as class=DATATABLE, page=Page(47)
+                     increment_current_page from_page=47, to_page=48
+          TRACE evaluating for exit case on page 48
+             push_unchecked_classification_job class=SUBCHAPTER, page=Page(48), available_workers=3
+             work_available_worker worker=1
+          TRACE initialized override step for page: 48
+          TRACE [OVSTR] streaming page 48 as class diagram
+             handle_override override_result=InferAs(DIAGRAM)
+                 push_classification_job class=DIAGRAM, page=Page(48), available_workers=2
+                 decide_as class=DIAGRAM, page=Page(48)
+                     increment_current_page from_page=48, to_page=49
+          TRACE evaluating for exit case on page 49
+             push_unchecked_classification_job class=SUBCHAPTER, page=Page(49), available_workers=2
+             work_available_worker worker=0
+          TRACE initialized override step for page: 49
+          TRACE [OVSTR] streaming page 49 as class datatable
+             handle_override override_result=InferAs(DATATABLE)
+                 push_classification_job class=DATATABLE, page=Page(49), available_workers=1
+                 decide_as class=DATATABLE, page=Page(49)
+                     increment_current_page from_page=49, to_page=50
+          TRACE evaluating for exit case on page 50
+             push_unchecked_classification_job class=SUBCHAPTER, page=Page(50), available_workers=1
+          TRACE initialized override step for page: 50
+          TRACE [OVSTR] streaming page 50 as class diagram
+             handle_override override_result=InferAs(DIAGRAM)
+                 push_classification_job class=DIAGRAM, page=Page(50), available_workers=1
+                 decide_as class=DIAGRAM, page=Page(50)
+                     increment_current_page from_page=50, to_page=51
+          TRACE evaluating for exit case on page 51
+             push_unchecked_classification_job class=SUBCHAPTER, page=Page(51), available_workers=1
+          TRACE initialized override step for page: 51
+          TRACE [OVSTR] streaming page 51 as class datatable
+             handle_override override_result=InferAs(DATATABLE)
+                 push_classification_job class=DATATABLE, page=Page(51), available_workers=1
+                 decide_as class=DATATABLE, page=Page(51)
+                     increment_current_page from_page=51, to_page=52
+          TRACE evaluating for exit case on page 52
+             push_unchecked_classification_job class=SUBCHAPTER, page=Page(52), available_workers=1
+             push_extraction_job class=SUBCHAPTER, page=Page(52), available_workers=0
+              TRACE pushing extraction job: subchapter, pg52 (0 workers)
+          TRACE hit exit case for stream on page 52
+     classification page=52
+      DEBUG state remained committed.
+         step current_page=52
+          TRACE built candidate list with 5 objects
+             infer page=52, candidates=[UNKNOWN, CHAPTER, SUBCHAPTER, DIAGRAM, DATATABLE]
+              DEBUG no match on definitive constraint, page=52, def_constraint=FirstPageRoot
+              DEBUG no match on definitive constraint, page=52, def_constraint=SecondInPair
+              INFO passed all definitive constraints with no match, page=52
+              TRACE FAIL (IllegalSecondInPair): previous page datatable wasn't a primary pair, while class datatable is a secondary pair
+              DEBUG failed hard constraint, page=52, hard_constraint=IllegalSecondInPair, candidates_remaining=[UNKNOWN, CHAPTER, SUBCHAPTER, DIAGRAM]
+              INFO hard filtering done with: 5 -> 4 candidates, page=52
+                 soft_constraint_score page=Page(52), constraint=REWARD_IsNaturalChild, class=UNKNOWN
+                 soft_constraint_score page=Page(52), constraint=REWARD_IsNaturalChild, class=CHAPTER
+                 soft_constraint_score page=Page(52), constraint=REWARD_IsNaturalChild, class=SUBCHAPTER
+                 soft_constraint_score page=Page(52), constraint=REWARD_IsNaturalChild, class=DIAGRAM
+                 soft_constraint_score page=Page(52), constraint=REWARD_FirstInPair, class=UNKNOWN
+                 soft_constraint_score page=Page(52), constraint=REWARD_FirstInPair, class=CHAPTER
+                 soft_constraint_score page=Page(52), constraint=REWARD_FirstInPair, class=SUBCHAPTER
+                 soft_constraint_score page=Page(52), constraint=REWARD_FirstInPair, class=DIAGRAM
+              TRACE page 52 soft sort complete, top candidate is diagram, (all candidates) [(UNKNOWN, [Neutral, Neutral]), (CHAPTER, [Neutral, Neutral]), (SUBCHAPTER, [Neutral, REWARD_Light]), (DIAGRAM, [Neutral, REWARD_Heavy])] 
+              INFO return=DIAGRAM
+             _override page=52
+              INFO return=None
+             push_classification_job class=DIAGRAM, page=Page(52), available_workers=1
+             decide_as class=DIAGRAM, page=Page(52)
+                 increment_current_page from_page=52, to_page=53
+             work_available_worker worker=3
+     classification page=53
+      DEBUG state remained committed.
+         step current_page=53
+          TRACE built candidate list with 5 objects
+             infer page=53, candidates=[UNKNOWN, CHAPTER, SUBCHAPTER, DIAGRAM, DATATABLE]
+              DEBUG no match on definitive constraint, page=53, def_constraint=FirstPageRoot
+              INFO class hit definitive constraint, page=53, hit_constraint=SecondInPair, winner=datatable
+              INFO return=DATATABLE
+             _override page=53
+              INFO return=None
+             push_classification_job class=DATATABLE, page=Page(53), available_workers=0
+             decide_as class=DATATABLE, page=Page(53)
+                 increment_current_page from_page=53, to_page=54
+     classification page=54
+      DEBUG state remained committed.
+         step current_page=54
+          TRACE built candidate list with 5 objects
+             infer page=54, candidates=[UNKNOWN, CHAPTER, SUBCHAPTER, DIAGRAM, DATATABLE]
+              DEBUG no match on definitive constraint, page=54, def_constraint=FirstPageRoot
+              DEBUG no match on definitive constraint, page=54, def_constraint=SecondInPair
+              INFO passed all definitive constraints with no match, page=54
+              TRACE FAIL (IllegalSecondInPair): previous page datatable wasn't a primary pair, while class datatable is a secondary pair
+              DEBUG failed hard constraint, page=54, hard_constraint=IllegalSecondInPair, candidates_remaining=[UNKNOWN, CHAPTER, SUBCHAPTER, DIAGRAM]
+              INFO hard filtering done with: 5 -> 4 candidates, page=54
+                 soft_constraint_score page=Page(54), constraint=REWARD_IsNaturalChild, class=UNKNOWN
+                 soft_constraint_score page=Page(54), constraint=REWARD_IsNaturalChild, class=CHAPTER
+                 soft_constraint_score page=Page(54), constraint=REWARD_IsNaturalChild, class=SUBCHAPTER
+                 soft_constraint_score page=Page(54), constraint=REWARD_IsNaturalChild, class=DIAGRAM
+                 soft_constraint_score page=Page(54), constraint=REWARD_FirstInPair, class=UNKNOWN
+                 soft_constraint_score page=Page(54), constraint=REWARD_FirstInPair, class=CHAPTER
+                 soft_constraint_score page=Page(54), constraint=REWARD_FirstInPair, class=SUBCHAPTER
+                 soft_constraint_score page=Page(54), constraint=REWARD_FirstInPair, class=DIAGRAM
+              TRACE page 54 soft sort complete, top candidate is diagram, (all candidates) [(UNKNOWN, [Neutral, Neutral]), (CHAPTER, [Neutral, Neutral]), (SUBCHAPTER, [Neutral, REWARD_Light]), (DIAGRAM, [Neutral, REWARD_Heavy])] 
+              INFO return=DIAGRAM
+             _override page=54
+              INFO return=None
+             push_classification_job class=DIAGRAM, page=Page(54), available_workers=0
+             decide_as class=DIAGRAM, page=Page(54)
+                 increment_current_page from_page=54, to_page=55
+             polled_results result_count=1
+                 handle_classification_result page=Page(52), class=DIAGRAM, res=Err("doesn't contain valid chapter text")
+                     signal_deferral page=55, tasks_in_queue=6
+                  INFO polling before entering deferral
+                     work_available_worker worker=3
+                     polled_results result_count=1
+                         handle_classification_result page=Page(54), class=DIAGRAM, res=Err("failed to find figure text")
+                             signal_deferral page=55, tasks_in_queue=5
+                          INFO polling before entering deferral
+                             work_available_worker worker=3
+                             push_extraction_job class=DIAGRAM, page=Page(46), available_workers=0
+                              TRACE pushing extraction job: diagram, pg46 (0 workers)
+                             polled_results result_count=1
+                                 handle_classification_result page=Page(46), class=DIAGRAM, res=Ok(())
+                             work_available_worker worker=2
+                             polled_results result_count=1
+                                 handle_extraction_result page=Page(46), class=DIAGRAM, res=Ok(OkUserResult { inner: 0x7b42ef8b90, _data: PhantomData<cxx::string::CxxString> })
+                             work_available_worker worker=2
+                             polled_results result_count=1
+                                 handle_extraction_result page=Page(52), class=SUBCHAPTER, res=Ok(OkUserResult { inner: 0x7b42ef8b90, _data: PhantomData<cxx::string::CxxString> })
+                             work_available_worker worker=2
+                             push_extraction_job class=DIAGRAM, page=Page(48), available_workers=0
+                              TRACE pushing extraction job: diagram, pg48 (0 workers)
+                             polled_results result_count=1
+                                 handle_classification_result page=Page(48), class=DIAGRAM, res=Ok(())
+                             work_available_worker worker=0
+                             polled_results result_count=1
+                                 handle_extraction_result page=Page(48), class=DIAGRAM, res=Ok(OkUserResult { inner: 0x7b42ef8b90, _data: PhantomData<cxx::string::CxxString> })
+                             work_available_worker worker=0
+                             polled_results result_count=1
+                                 handle_classification_result page=Page(50), class=DIAGRAM, res=Err("failed to find figure text")
+                                     signal_deferral page=55, tasks_in_queue=1
+                                  INFO polling before entering deferral
+                                     work_available_worker worker=0
+                                     push_extraction_job class=DATATABLE, page=Page(53), available_workers=0
+                                      TRACE pushing extraction job: datatable, pg53 (0 workers)
+                                     polled_results result_count=1
+                                         handle_classification_result page=Page(53), class=DATATABLE, res=Ok(())
+                                     work_available_worker worker=3
+                                     polled_results result_count=1
+                                         handle_extraction_result page=Page(53), class=DATATABLE, res=Fail(FailUserResult { err: "failed to extract datatable no column boundaries detected — page likely lacks expected table structure" })
+                                          ERROR failed to extract page 53, as class datatable
+                                            failed to extract datatable no column boundaries detected — page likely lacks expected table structure
+                                     push_extraction_job class=DATATABLE, page=Page(47), available_workers=1
+                                      TRACE pushing extraction job: datatable, pg47 (1 workers)
+                                     polled_results result_count=1
+                                         handle_classification_result page=Page(47), class=DATATABLE, res=Ok(())
+                                     work_available_worker worker=1
+                                     push_extraction_job class=DATATABLE, page=Page(49), available_workers=1
+                                      TRACE pushing extraction job: datatable, pg49 (1 workers)
+                                     polled_results result_count=1
+                                         handle_classification_result page=Page(49), class=DATATABLE, res=Ok(())
+                                     work_available_worker worker=0
+                                     push_extraction_job class=DATATABLE, page=Page(51), available_workers=1
+                                      TRACE pushing extraction job: datatable, pg51 (1 workers)
+                                     polled_results result_count=1
+                                         handle_classification_result page=Page(51), class=DATATABLE, res=Ok(())
+                                     work_available_worker worker=2
+                                     polled_results result_count=1
+                                         handle_extraction_result page=Page(49), class=DATATABLE, res=Ok(OkUserResult { inner: 0x7b42ef79c0, _data: PhantomData<cxx::string::CxxString> })
+                                     polled_results result_count=1
+                                         handle_extraction_result page=Page(51), class=DATATABLE, res=Ok(OkUserResult { inner: 0x7b42ef79c0, _data: PhantomData<cxx::string::CxxString> })
+                                     polled_results result_count=1
+                                         handle_extraction_result page=Page(47), class=DATATABLE, res=Ok(OkUserResult { inner: 0x7b42ef79c0, _data: PhantomData<cxx::string::CxxString> })
+     classification page=55
+         schedule_deferral page=55
+     classification page=55
+         enter_deferral page=55, available_workers=4
+             check_independent page=55, independent=subchapter
+                 push_unchecked_classification_job class=SUBCHAPTER, page=Page(55), available_workers=4
+             check_independent page=56, independent=chapter
+                 push_unchecked_classification_job class=CHAPTER, page=Page(56), available_workers=3
+             check_independent page=57, independent=subchapter
+                 push_unchecked_classification_job class=SUBCHAPTER, page=Page(57), available_workers=2
+             check_independent page=58, independent=chapter
+                 push_unchecked_classification_job class=CHAPTER, page=Page(58), available_workers=1
+             push_extraction_job class=SUBCHAPTER, page=Page(57), available_workers=0
+              TRACE pushing extraction job: subchapter, pg57 (0 workers)
+             exit_deferral on_page=Page(57), as_class=SUBCHAPTER, from_page=55
+                 decide_as class=SUBCHAPTER, page=Page(57)
+                  DEBUG current parent updated to subchapter
+                 fill_in_dependents ended_on_class=subchapter
+                  TRACE filling in dependents for class subchapter
+                     fill_in_with_only_pair pair=(DIAGRAM, DATATABLE)
+                         deferral_fill_range from_page=55, to_page=Some(Page(57)), range=2
+                      TRACE filling in page 55 as pair object diagram
+                         decide_and_classify_as class=DIAGRAM, page=Page(55)
+                             decide_as class=DIAGRAM, page=Page(55)
+                             push_classification_job class=DIAGRAM, page=Page(55), available_workers=1
+                      TRACE filling in page 56 as pair object datatable
+                         decide_and_classify_as class=DATATABLE, page=Page(56)
+                             decide_as class=DATATABLE, page=Page(56)
+                             push_classification_job class=DATATABLE, page=Page(56), available_workers=1
+                 work_available_worker worker=0
+                 polled_results result_count=1
+                     handle_classification_result page=Page(55), class=SUBCHAPTER, res=Err("expected 1 instances of the string 'CHAPTER' but found 0 instances.")
+                 work_available_worker worker=1
+                 polled_results result_count=1
+                     handle_classification_result page=Page(56), class=CHAPTER, res=Err("found 0 instances of 'CHAPTER'(uppercase), but expected 1")
+                 work_available_worker worker=2
+                 push_extraction_job class=DIAGRAM, page=Page(55), available_workers=0
+                  TRACE pushing extraction job: diagram, pg55 (0 workers)
+                 polled_results result_count=1
+                     handle_classification_result page=Page(55), class=DIAGRAM, res=Ok(())
+                 work_available_worker worker=1
+                 polled_results result_count=1
+                     handle_extraction_result page=Page(57), class=SUBCHAPTER, res=Ok(OkUserResult { inner: 0x7b42ef9f10, _data: PhantomData<cxx::string::CxxString> })
+                 polled_results result_count=2
+                     handle_classification_result page=Page(58), class=CHAPTER, res=Err("found 0 instances of 'CHAPTER'(uppercase), but expected 1")
+                     handle_extraction_result page=Page(55), class=DIAGRAM, res=Ok(OkUserResult { inner: 0x7b42ef9f10, _data: PhantomData<cxx::string::CxxString> })
+                 push_extraction_job class=DATATABLE, page=Page(56), available_workers=3
+                  TRACE pushing extraction job: datatable, pg56 (3 workers)
+                 polled_results result_count=1
+                     handle_classification_result page=Page(56), class=DATATABLE, res=Ok(())
+                 work_available_worker worker=0
+                 polled_results result_count=1
+                     handle_extraction_result page=Page(56), class=DATATABLE, res=Ok(OkUserResult { inner: 0x7b42ef9f10, _data: PhantomData<cxx::string::CxxString> })
+     classification page=60
+46 -> diagram
+57 -> subchapter
+47 -> datatable
+55 -> diagram
+56 -> datatable
+44 -> chapter
+48 -> diagram
+50 -> diagram
+54 -> diagram
+53 -> datatable
+45 -> unknown
+49 -> datatable
+51 -> datatable
+52 -> diagram
