@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PDF Classifier — Run Visualizer</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header id="toolbar">
+    <div class="brand">
+      <span class="brand-mark">▚</span>
+      <span class="brand-name">classifier visualizer</span>
+      <span id="run-status" class="run-status" hidden></span>
+    </div>
+    <div class="toolbar-actions">
+      <label class="btn file-btn">open log
+        <input type="file" id="file-input" accept=".log,.txt,.trace,text/plain" hidden>
+      </label>
+      <button class="btn" id="paste-btn">paste</button>
+      <button class="btn" id="sample-btn" hidden>sample</button>
+      <button class="btn accent" id="live-btn" hidden>live run…</button>
+      <button class="btn" id="stop-btn" hidden>■ stop</button>
+      <span class="spacer"></span>
+      <label class="check"><input type="checkbox" id="show-minor"> micro-steps</label>
+      <label class="check" id="follow-wrap" hidden><input type="checkbox" id="follow" checked> follow</label>
+      <button class="btn icon" id="theme-btn" title="toggle theme">◐</button>
+    </div>
+  </header>
+
+  <div id="live-panel" hidden>
+    <form id="live-form">
+      <label>document <input type="text" id="lf-doc" spellcheck="false"></label>
+      <label>start <input type="number" id="lf-start" value="44" min="0"></label>
+      <label>end <input type="number" id="lf-end" value="120" min="1"></label>
+      <label>threads <input type="number" id="lf-threads" value="4" min="1" max="16"></label>
+      <label>log level
+        <select id="lf-level">
+          <option value="trace" selected>trace</option>
+          <option value="debug">debug</option>
+          <option value="info">info</option>
+        </select>
+      </label>
+      <button type="submit" class="btn accent">start</button>
+      <span id="live-error" class="live-error"></span>
+    </form>
+  </div>
+
+  <main id="app" class="empty">
+    <section id="empty-hint">
+      <div class="hint-card">
+        <h1>step through a classifier run</h1>
+        <p>Load a trace log produced by <code>pdf_classifier_core</code> — the hierarchical
+        output written to <b>stderr</b> when running with <code>-l trace</code> — or start a
+        live run against the binary (when served via <code>server.py</code>).</p>
+        <p class="hint-dim">Every inference, constraint verdict, override, classify/extract
+        result, deferral probe and backfill becomes a step you can scrub through.</p>
+      </div>
+    </section>
+
+    <section id="strip-section" hidden>
+      <div class="strip-head">
+        <div id="legend" class="legend"></div>
+        <div class="strip-tools">
+          <span id="strip-range" class="dim"></span>
+          <input type="range" id="zoom" min="6" max="30" value="16" title="cell width">
+        </div>
+      </div>
+      <div id="strip-scroll">
+        <div id="strip-ticks"></div>
+        <div id="strip"></div>
+        <div id="strip-bands"></div>
+      </div>
+      <div id="cell-tip" class="tip" hidden></div>
+    </section>
+
+    <section id="panels" hidden>
+      <div id="steps-pane">
+        <div class="pane-title">steps <span id="step-count" class="dim"></span></div>
+        <div id="steps-list" tabindex="0"></div>
+      </div>
+      <div id="detail-pane">
+        <nav id="detail-tabs">
+          <button class="tab on" data-tab="step">step</button>
+          <button class="tab" data-tab="tree">tree</button>
+          <button class="tab" data-tab="margins">margins</button>
+          <button class="tab" data-tab="state">state</button>
+          <button class="tab" data-tab="errors">errors <span id="err-count"></span></button>
+          <button class="tab" data-tab="extract">extractions <span id="ext-count"></span></button>
+          <button class="tab" data-tab="final">final</button>
+        </nav>
+        <div id="detail-body"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer id="playbar" hidden>
+    <button class="btn icon" id="pb-first" title="first step (Home)">⏮</button>
+    <button class="btn icon" id="pb-prev-group" title="previous iteration (Shift+←)">⇤</button>
+    <button class="btn icon" id="pb-prev" title="previous step (←)">◀</button>
+    <button class="btn icon accent" id="pb-play" title="play/pause (Space)">▶</button>
+    <button class="btn icon" id="pb-next" title="next step (→)">▶︎▮</button>
+    <button class="btn icon" id="pb-next-group" title="next iteration (Shift+→)">⇥</button>
+    <button class="btn icon" id="pb-last" title="last step (End)">⏭</button>
+    <input type="range" id="pb-scrub" min="0" max="0" value="0">
+    <span id="pb-label" class="pb-label"></span>
+    <span class="spacer"></span>
+    <span id="mode-badge" class="mode-badge">COMMITTED</span>
+    <button class="btn" id="log-toggle">raw log</button>
+  </footer>
+
+  <section id="log-pane" hidden>
+    <pre id="log-pre"></pre>
+  </section>
+
+  <dialog id="paste-dialog">
+    <form method="dialog">
+      <div class="pane-title">paste log text</div>
+      <textarea id="paste-text" spellcheck="false"
+        placeholder="paste the stderr trace output here (final stdout `page -> class` lines may be appended too)"></textarea>
+      <div class="dialog-actions">
+        <button class="btn" value="cancel">cancel</button>
+        <button class="btn accent" id="paste-ok" value="ok">load</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="parser.js"></script>
+  <script src="model.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
