@@ -35,6 +35,7 @@ target_link_libraries(classifier_tests PRIVATE
     mupdf::mupdf
     GTest::gtest
     GTest::gtest_main
+    nlohmann_json::nlohmann_json
 )
 
 target_include_directories(classifier_tests PRIVATE

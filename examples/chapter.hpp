@@ -4,11 +4,19 @@
 #include "util.hpp"
 #include <memory>
 #include <mupdf/fitz.h>
+#include <nlohmann/json.hpp>
 #include <shared/result.h>
 #include <string>
 
 inline constexpr int EXPECTED_UPPERCASE_CHAPTER_FREQUENCY = 1;
 inline constexpr int EXPECTED_LOWERCASE_CHAPTER_FREQUENCY = 2;
+
+struct ExpectedSubchapter {
+  std::string sub_chapter_num;
+  std::string path;
+};
+
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ExpectedSubchapter, sub_chapter_num, path)
 
 class Chapter : public Object<true, true> {
 public:
@@ -16,7 +24,9 @@ public:
 
   Result* contains_valid_chapter_text();
   Result* extract_chapter_number();
+  void extract_expected_subchapters();
 
+  std::vector<ExpectedSubchapter> expected_subchapters;
   std::string chapter_number;
 };
 

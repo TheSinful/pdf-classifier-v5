@@ -1,3 +1,5 @@
+use tracing::instrument;
+
 use crate::constraints;
 use crate::generated::generated_object_types::ObjectCastError;
 use crate::obj_list::KnownObjectList;
@@ -14,14 +16,6 @@ pub enum InferenceError {
     #[error(transparent)]
     ConstraintCastError(#[from] constraints::CastError),
 
-    #[error("Attempted to access an out of bounds SoftConstraint, Given i={0} when {1} >= i >= 0")]
-    SoftConstraintOutOfBounds(u8, u8), // given, max
-
-    #[error(
-        "Failed to find stored weights of class {0}! This shouldn't ever happen as at the minimum each class gets default weights!"
-    )]
-    FailedToLocateWeights(String),
-
     #[error(
         "Attempted to score on class {0} with SoftConstriant {1}, yet no constraint was stored in score map."
     )]
@@ -33,7 +27,7 @@ pub enum InferenceError {
 
 pub type InferenceResult<T> = std::result::Result<T, InferenceError>;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct Inferencer;
 
 impl Inferencer {
@@ -41,58 +35,35 @@ impl Inferencer {
         Self {}
     }
 
+    #[instrument(skip_all, fields(%page, candidates = ?candidates.0), ret, err)]
     pub fn infer(
         &mut self,
         ctx: &mut Context,
-        pages: Vec<Page>,
+        page: Page,
         candidates: &KnownObjectList,
-    ) -> InferenceResult<Vec<KnownObject>> {
-        let mut winners: Vec<KnownObject> = vec![];
-        let total_pages = pages.len();
+    ) -> InferenceResult<KnownObject> {
+        let candidates_after_def_constraint = candidates
+            .clone()
+            .filter_by_definitive_constraints(ctx, page)?;
 
-        for page in pages {
-            log::trace!("beginning inference on page {}", page);
+        if candidates_after_def_constraint.len() == 1 {
+            let winner = *candidates_after_def_constraint.0.last().unwrap();
 
-            let candidates = candidates
-                .clone()
-                .filter_by_definitive_constraints(ctx, page)?;
-
-            if candidates.0.len() == 1 {
-                let winner = *candidates.0.last().unwrap();
-                log::trace!(
-                    "page {} resolved early via definitive constraint as {}",
-                    page,
-                    winner.to_string()
-                );
-
-                winners.push(winner);
-                continue;
-            }
-
-            log::trace!(
-                "page {} proceeding to hard + soft filtering with {} candidates",
-                page,
-                candidates.0.len()
-            );
-
-            let candidates = candidates
-                .filter_by_hard_constraints(ctx, page)?
-                .sort_by_soft_constraints(ctx, page)?;
-
-            // todo: apply dynamic weighting here or maybe take an arg in "sort" to do so
-
-            let winner = *candidates.0.last().unwrap_or_else(|| &KnownObject::UNKNOWN);
-            winners.push(winner);
-            log::trace!("page {} final inference: {}", page, winner.to_string());
+            return Ok(winner);
         }
 
-        log::trace!(
-            "done stepping over {} page(s), with {} winner(s)",
-            total_pages,
-            winners.len()
-        );
+        let candidates_after_soft_hard_constraints = candidates_after_def_constraint
+            .filter_by_hard_constraints(ctx, page)?
+            .sort_by_soft_constraints(ctx, page)?;
 
-        Ok(winners)
+        // todo: apply dynamic weighting here or maybe take an arg in "sort" to do so
+
+        let winner = *candidates_after_soft_hard_constraints
+            .0
+            .last()
+            .unwrap_or_else(|| &KnownObject::UNKNOWN);
+
+        return Ok(winner);
     }
 }
 
@@ -100,24 +71,21 @@ impl Inferencer {
 mod tests {
     use super::Inferencer;
     use crate::{
-        context::Context, generated::generated_object_types::KnownObject, obj_list::KnownObjectList,
+        context::Context, generated::generated_object_types::KnownObject,
+        obj_list::KnownObjectList, page::Page,
     };
 
     #[test]
     pub fn test_score_manage_step() {
+        let start_page = Page(0);
+        let end_page = Page(9);
+
         let mut manager = Inferencer::new();
-        let mut ctx = Context::new(0u32.into(), 9u32.into());
-        let mut pages = Vec::new();
-        pages.push(0u32.into());
-        
-        match manager.infer(&mut ctx, pages, &KnownObjectList::new()) {
+        let mut ctx = Context::new(start_page, end_page);
+
+        match manager.infer(&mut ctx, start_page, &KnownObjectList::new()) {
             Ok(r) => {
-                assert!(
-                    r.len() == 1,
-                    "Should've gotten one winner but got {}",
-                    r.len()
-                );
-                assert!(*r.last().unwrap() == KnownObject::CHAPTER); // TODO! need something to force the example project for cfg(test) otherwise this will fail compilation.
+                assert!(r == KnownObject::CHAPTER); // TODO! need something to force the example project for cfg(test) otherwise this will fail compilation.
             }
             Err(e) => panic!("{}", e),
         }

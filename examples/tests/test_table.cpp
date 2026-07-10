@@ -21,10 +21,11 @@ static std::string boundary_debug(fz_rect boundary) {
 }
 
 // Find the first cell in a flat cell list matching (row_num, column).
-static const TableDataCell* find_cell(const std::vector<TableDataCell>& cells, int row, CellColumn col) {
-  for (const auto& c : cells) {
-    if (c.row_num == row && c.column == static_cast<int>(col))
-      return &c;
+static const TableDataCell* find_cell(const std::vector<TableCellKind>& cells, int row, CellColumn col) {
+  for (const TableCellKind& c : cells) {
+    const TableDataCell& v = std::get<TableDataCell>(c);
+    if (v.row_num == row && v.column == static_cast<int>(col))
+      return &v;
   }
   return nullptr;
 }
@@ -94,9 +95,12 @@ TEST_F(DataTableFixture, TestExtractCellsCoverAllColumns) {
     ASSERT_FALSE(cells.empty());
 
     bool has[8] = {}; // indexed by CellColumn (1-based)
-    for (const auto& c : cells) {
-      if (c.column >= 1 && c.column <= 7)
-        has[c.column] = true;
+    for (const TableCellKind& c : cells) {
+      nlohmann::json j = {};
+      to_json(j, c);
+      int column = j["column"];
+      if (column >= 1 && column <= 7)
+        has[column] = true;
     }
 
     EXPECT_TRUE(has[KEY]) << "Expected cells in KEY column";
@@ -190,9 +194,11 @@ TEST_F(DataTableFixture, TestDumpCellBoundaries) {
 
   for (size_t i = 0; i < cells.size(); ++i) {
     const auto& c = cells[i];
+    const TableDataCell& v = std::get<TableDataCell>(c);
+
     out << std::format("    {{\"row\": {}, \"col\": {}, \"boundary\": "
                        "{{\"x0\": {:.2f}, \"y0\": {:.2f}, \"x1\": {:.2f}, \"y1\": {:.2f}}}}}",
-                       c.row_num, c.column, c.boundary.x0, c.boundary.y0, c.boundary.x1, c.boundary.y1);
+                       v.row_num, v.column, v.boundary.x0, v.boundary.y0, v.boundary.x1, v.boundary.y1);
     if (i + 1 < cells.size())
       out << ",";
     out << "\n";

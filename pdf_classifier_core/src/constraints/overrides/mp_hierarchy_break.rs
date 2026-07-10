@@ -16,7 +16,7 @@ pub struct MultiPageHierarchyBreak {
     pub after: KnownObject,
     pub impl_blank_after: bool,
     pub end_on: KnownObject,
-    pub fill_with: &'static [KnownObject], 
+    pub fill_with: &'static [KnownObject],
     current_fillin_idx: usize,
 }
 
@@ -52,30 +52,32 @@ impl Display for MultiPageHierarchyBreak {
 unsafe impl Sync for MultiPageHierarchyBreak {}
 
 impl OverrideStream for MultiPageHierarchyBreak {
-    fn step(&mut self, _: &Context, _: Page) -> OverrideAction {
+    fn step(&mut self, ctx: &Context, page: Page) -> OverrideAction {
         let class = self.fill_with.index(self.current_fillin_idx);
-
-        if self.current_fillin_idx + 1 > self.fill_with.len() {
+        tracing::trace!("[OVSTR] streaming page {} as class {}", page, class); 
+        if self.current_fillin_idx + 1 >= self.fill_with.len() {
             self.current_fillin_idx = 0;
         } else {
             self.current_fillin_idx += 1;
         }
 
-        OverrideAction::ClassifyAs(*class)
+        OverrideAction::InferAs(*class)
     }
 
     fn should_enter(&self, ctx: &Context, page: Page) -> bool {
-        if self.impl_blank_after {
+        if self.impl_blank_after && page.0 >= ctx.start_page.0 + 2 {
             let is_prev_page_unknown = ctx.previous_page_inference(page) == &KnownObject::UNKNOWN;
             let is_prev_page_target = ctx.previous_page_inference(page.previous()) == &self.after;
             return is_prev_page_unknown && is_prev_page_target;
-        } else {
+        } else if !self.impl_blank_after {
             let is_prev_page_target = ctx.previous_page_inference(page) == &self.after;
             return is_prev_page_target;
+        } else {
+            false
         }
     }
 
-    fn should_exit(&self, _: &Context,  _: Page) -> OverrideStreamExitCase {
+    fn should_exit(&self, _: &Context, _: Page) -> OverrideStreamExitCase {
         return OverrideStreamExitCase::IfClassifiedAs(self.end_on);
     }
 }

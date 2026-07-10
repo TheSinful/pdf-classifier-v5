@@ -14,6 +14,7 @@ class UserCppBuilder:
     mupdf_build_dir: Path
     include_dir: Path
     user_build_args: Any
+    in_debug: bool
     
     def __init__(self, build_dir: Path, shared_header_path: Path, 
                  user_cmake_lists_path: Path, mupdf_build_dir: Path, 
@@ -25,13 +26,14 @@ class UserCppBuilder:
         self.include_dir = include_dir
         self.user_build_args = user_build_args
     
-    def build(self):         
+    def build(self, in_debug: bool):         
         logger.info("Building user C++ project from %s", self.user_cmake_lists_path)
         self.user_build_args["BUILD_SHARED_LIBS"] = "OFF"
         self.user_build_args["CLASSIFIER_INCLUDE_DIR"] = str(self.shared_header_path)
         self.user_build_args["mupdf_DIR"] = self.build_dir / "lib" / "cmake" / "mupdf"
         self.user_build_args["CMAKE_INSTALL_PREFIX"] = str(self.build_dir)
         self.build_dir.mkdir(exist_ok=True, parents=True)
+        self.in_debug = in_debug
         
         # configuration
         config_cmd = [os.path.join(CMAKE_BIN_DIR, "cmake")]
@@ -48,7 +50,7 @@ class UserCppBuilder:
         logger.debug("CMake build command: %s", build_cmd)
         subprocess.run(build_cmd, check=True)
         logger.debug("CMake build complete")
-    
+
         # install headers
         install_cmd = [os.path.join(CMAKE_BIN_DIR, "cmake"), "--install", str(self.build_dir), "--prefix", str(self.include_dir.parent)]
         logger.debug("CMake install command: %s", install_cmd)

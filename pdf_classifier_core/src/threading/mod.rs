@@ -33,6 +33,7 @@ pub struct FFIFuture<T> {
     pub worker_id: u32,
 }
 
+#[derive(Debug)]
 pub enum JobType {
     Classification,
     Extraction,
@@ -52,6 +53,7 @@ pub enum WorkerJob {
     },
 }
 
+#[derive(Debug)]
 pub struct WorkerThread {
     pub id: u32,
     is_working: Arc<AtomicBool>,
@@ -120,12 +122,15 @@ impl WorkerThread {
                 .expect(&format!(
                     "Thread error while attempting to resolve classify future for page {} with class {}",
                     class.to_string(),
-                    page.num
+                    page.0
                 ));
 
             let rec_result = match receiver.await {
                 Ok(classification_result) => classification_result,
-                Err(_) => panic!("Thread sender was prematurely dropped!"),
+                Err(_) => panic!(
+                    "Thread sender for page {} as class {} was prematurely dropped!",
+                    page, class
+                ),
             };
 
             FFIFuture {
@@ -158,12 +163,15 @@ impl WorkerThread {
                 .await.expect(&format!(
                     "Thread error while attempting to resolve extraction future for page {} with class {}",
                     class.to_string(),
-                    page.num
+                    page.0
                 ));
 
             let result = match receiver.await {
                 Ok(res) => res,
-                Err(_) => panic!("Thread sender was prematurely dropped!"), // tokio::sync::oneshot::error::RecvError ensures that this is the only error case.
+                Err(_) => panic!(
+                    "Thread sender for page {} as class {} was prematurely dropped!",
+                    page, class
+                ), // tokio::sync::oneshot::error::RecvError ensures that this is the only error case.
             };
 
             FFIFuture {
@@ -201,13 +209,16 @@ impl WorkerThread {
         class: KnownObject,
         page: Page,
     ) -> () {
-        let call = unsafe { ffi::classify(&state.ctx, &state.doc, class, page.into()) };
+        let call = unsafe { ffi::classify(&state.ctx, &state.doc, class, page.0) };
 
         let packet = responder.send(call);
 
         match packet {
             Ok(_) => (),
-            Err(_) => panic!("Thread reciever prematurely dropped!"),
+            Err(_) => panic!(
+                "Thread reciever for page {} as class {} prematurely dropped!",
+                page, class
+            ),
         }
     }
 
@@ -218,13 +229,16 @@ impl WorkerThread {
         class: KnownObject,
         page: Page,
     ) -> () {
-        let call = unsafe { ffi::extract(&state.ctx, &state.doc, &shared, class, page.into()) };
+        let call = unsafe { ffi::extract(&state.ctx, &state.doc, &shared, class, page.0) };
 
         let packet = responder.send(call);
 
         match packet {
             Ok(_) => (),
-            Err(_) => panic!("Thread reciever prematurely dropped!"),
+            Err(_) => panic!(
+                "Thread reciever for page {} as class {} prematurely dropped!",
+                page, class
+            ),
         }
     }
 }

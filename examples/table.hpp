@@ -5,6 +5,7 @@
 #include <memory>
 #include <mupdf/fitz.h>
 #include <shared/result.h>
+#include <variant>
 #include <vector>
 
 /*
@@ -32,6 +33,39 @@ struct TableDataCountCell : public TableDataCell {
   int count;
 };
 
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(fz_rect, x0, x1, y0, y1)
+
+using TableCellKind = std::variant<TableDataCell, TableDataKeyCell, TableDataCountCell>;
+
+inline void to_json(nlohmann::json& j, const TableCellKind& c) {
+  j = {};
+
+  std::visit(
+      [&](auto&& v) {
+        using T = std::decay_t<decltype(v)>;
+        if constexpr (std::is_same_v<T, TableDataKeyCell>) {
+          j["boundary"] = v.boundary;
+          j["row_num"] = v.row_num;
+          j["column"] = v.column;
+          j["text"] = v.text ? *v.text : "";
+          j["included"] = v.included;
+          j["key"] = v.key;
+        } else if constexpr (std::is_same_v<T, TableDataCountCell>) {
+          j["boundary"] = v.boundary;
+          j["row_num"] = v.row_num;
+          j["column"] = v.column;
+          j["text"] = v.text ? *v.text : "";
+          j["count"] = v.count;
+        } else {
+          j["boundary"] = v.boundary;
+          j["row_num"] = v.row_num;
+          j["column"] = v.column;
+          j["text"] = v.text ? *v.text : "";
+        }
+      },
+      c);
+}
+
 enum CellColumn { KEY = 1, DMC_ARMY = 2, NATO_STOCK_NUM = 3, ITEM_NAME = 4, PART_NUM = 5, NUM_OFF = 6, ANNOTATION = 7 };
 
 class DataTable : public Object<true, true> {
@@ -40,12 +74,11 @@ public:
   ~DataTable();
 
   Result* valid_page_bounds();
-  std::vector<TableDataCell> extract_cells();
+  std::vector<TableCellKind> extract_cells();
 
 private:
   void calc_page_scope();
   void calc_column_boundaries();
-  std::vector<fz_rect> calc_cell_boundaries(fz_rect fig_key_boundary, int start_y, int end_y, int start_x, int end_x);
   std::vector<int> calc_column_seperators(fz_rect scan_bounds);
   CellVerticalBoundaryList calc_cell_vertical_boundaires(int start_y, int end_y, int start_x, int end_x);
   void construct_cells(const CellVerticalBoundaryList& cell_vertical_boundaries);

@@ -1,3 +1,8 @@
+use tracing::Level;
+use tracing::Span;
+use tracing::field::Empty;
+use tracing::instrument;
+
 use crate::constraints::DefinitiveConstraints;
 use crate::constraints::HardConstraints;
 use crate::constraints::{
@@ -11,11 +16,17 @@ use crate::inferencer::{InferenceError, InferenceResult};
 use crate::page::Page;
 use crate::score::Score;
 use std::collections::HashSet;
+use std::fmt::Debug;
 use std::ops::Deref;
 use std::ops::DerefMut;
 
-#[derive(Debug)]
 struct ScoreList(pub Vec<Score>);
+
+impl Debug for ScoreList {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
 
 impl ScoreList {
     pub fn sum(&self) -> Score {
@@ -49,13 +60,13 @@ impl KnownObjectList {
             vec.push(obj);
         }
 
-        log::trace!("built candidate list with {} objects", vec.len());
+        tracing::trace!("built candidate list with {} objects", vec.len());
 
         Self { 0: vec }
     }
 
     pub fn from_vec(vec: Vec<KnownObject>) -> Self {
-        log::trace!("built candidate list with {} objects", vec.len());
+        tracing::trace!("built candidate list with {} objects", vec.len());
 
         Self { 0: vec }
     }
@@ -77,6 +88,10 @@ impl KnownObjectList {
         self
     }
 
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
     pub fn filter_by_definitive_constraints(
         mut self,
         ctx: &Context,
@@ -93,29 +108,29 @@ impl KnownObjectList {
 
             match found {
                 Some(class) => {
-                    log::trace!(
-                        "page {} hit definitive constraint {:?}, winner is {}",
-                        page,
-                        def_constraint,
-                        class.to_string()
+                    tracing::info!(
+                        %page,
+                        hit_constraint = ?def_constraint,
+                        winner = %class,
+                        "class hit definitive constraint"
                     );
                     result.push(*class);
                     return Ok(Self { 0: result });
                 }
                 None => {
-                    log::trace!(
-                        "page {} no match on definitive constraint {:?}",
-                        page,
-                        def_constraint
+                    tracing::debug!(
+                        %page,
+                        ?def_constraint,
+                        "no match on definitive constraint",
                     );
                     continue;
                 }
             }
         }
 
-        log::trace!(
-            "page {} passed all definitive constraints with no match, returning full candidate list",
-            page
+        tracing::info!(
+            %page,
+            "passed all definitive constraints with no match"
         );
 
         Ok(self)
@@ -151,18 +166,17 @@ impl KnownObjectList {
                 .cloned()
                 .collect::<Vec<KnownObject>>();
 
-            log::trace!(
-                "page {} after hard constraint {:?}: {} candidates remaining ({:?})",
-                page,
-                constraint,
-                self.0.len(),
-                self.0
+            tracing::debug!(
+                %page,
+                hard_constraint = ?constraint,
+                candidates_remaining = ?self.0,
+                "failed hard constraint",
             );
         }
 
-        log::trace!(
-            "page {} hard filtering done, {} -> {} candidates",
-            page,
+        tracing::info!(
+            %page,
+            "hard filtering done with: {} -> {} candidates",
             before_count,
             self.0.len()
         );
@@ -173,28 +187,24 @@ impl KnownObjectList {
     pub fn sort_by_soft_constraints(mut self, ctx: &Context, page: Page) -> InferenceResult<Self> {
         self = self.filter_out_failed(ctx, &page);
 
+        #[instrument(name = "soft_constraint_score", skip(ctx, scores_buf), fields(class_gained_scored = Empty), err)]
         fn eval_class(
             ctx: &Context,
-            class: KnownObject,
             page: Page,
             constraint: SoftConstraints,
-            scores: &mut Vec<(KnownObject, ScoreList)>,
-        ) -> InferenceResult<()> {
+            class: KnownObject,
+            mut scores_buf: Vec<(KnownObject, ScoreList)>,
+        ) -> InferenceResult<Vec<(KnownObject, ScoreList)>> {
             let score = constraint.eval(ctx, class, page);
-            log::trace!(
-                "page {}, class {} scored: {:?} on soft constraint: {:?}",
-                page,
-                class.to_string(),
-                score,
-                constraint
-            );
 
-            let position = scores.iter().position(|x| x.0 == class).ok_or({
+            let position = scores_buf.iter().position(|x| x.0 == class).ok_or({
                 InferenceError::ScoreMapMissingConstraint(class.to_string(), constraint)
             })?;
 
-            scores[position].1.push(score);
-            Ok(())
+            Span::current().record("class_gained_scored", score.to_string());
+            /*  */
+            scores_buf[position].1.push(score);
+            Ok(scores_buf)
         }
 
         if self.0.len() <= 1 {
@@ -217,16 +227,16 @@ impl KnownObjectList {
         for soft_constraint_idx in 0..SOFT_ENUM_VARIANT_COUNT {
             let soft_constraint: SoftConstraints = soft_constraint_idx.try_into()?;
 
-            self.0
-                .iter()
-                .try_for_each(|x| eval_class(ctx, *x, page, soft_constraint, &mut scores))?;
+            for class in &self.0 {
+                scores = eval_class(ctx, page, soft_constraint, *class, scores)?
+            }
         }
 
         scores.iter_mut().for_each(|x| x.1.sort_by(|x, y| x.cmp(y)));
 
         scores.sort_by(|x, y| x.1.sum().cmp(&y.1.sum()));
 
-        log::trace!(
+        tracing::trace!(
             "page {} soft sort complete, top candidate is {}, (all candidates) {:?} ",
             page,
             scores.last().unwrap().0.to_string(),

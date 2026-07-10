@@ -1,7 +1,8 @@
 #![allow(dead_code)]
 
 use crate::generated::generated_object_types::KnownObject;
-use cxx::{UniquePtr, let_cxx_string};
+use cxx::{CxxString, UniquePtr, let_cxx_string};
+use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::path::PathBuf;
@@ -15,7 +16,7 @@ pub const STANDARD_CTX_MEM_LIMIT: usize = 256 << 20;
 /// A file and deal with it there.
 /// Although, most likely this will incorporate some dynamic form of data that can be configured
 /// To appeal to the dynamic aspect of this project.  
-pub type ExtractionResult = UserResult<()>;
+pub type ExtractionResult = UserResult<CxxString>;
 pub type ClassificationResult = UserResult<Shared>;
 
 #[cxx::bridge]
@@ -54,6 +55,7 @@ mod bridge {
         fn extract_shared_payload(r: &UniquePtr<OpaqueResult>) -> Result<UniquePtr<SharedData>>;
         fn extract_error_result(r: &UniquePtr<OpaqueResult>) -> Result<&CxxString>;
         fn get_result_status(r: &UniquePtr<OpaqueResult>) -> i32;
+        fn extract_string_payload(r: &UniquePtr<OpaqueResult>) -> Result<&CxxString>;
 
         fn drop_ctx(o_ctx: &UniquePtr<OpaqueCtx>) -> ();
         fn drop_doc(o_ctx: &UniquePtr<OpaqueCtx>, o_doc: &UniquePtr<OpaqueDoc>) -> ();
@@ -67,10 +69,28 @@ pub struct OkUserResult<T> {
     _data: PhantomData<T>,
 }
 
+impl<T> Debug for OkUserResult<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OkUserResult")
+            .field("inner", &format_args!("{:p}", &self.inner as *const _))
+            .field("_data", &self._data)
+            .finish()
+    }
+}
+
 pub struct FailUserResult {
     inner: UniquePtr<bridge::OpaqueResult>,
 }
 
+impl Debug for FailUserResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FailUserResult")
+            .field("err", &self.extract_fail_rsn())
+            .finish()
+    }
+}
+
+#[derive(Debug)]
 pub enum UserResult<T> {
     Ok(OkUserResult<T>),
     Fail(FailUserResult),
@@ -97,6 +117,15 @@ impl<T> UserResult<T> {
             UserResult::Fail(fail_user_result) => {
                 Some(fail_user_result.extract_fail_rsn().to_string())
             }
+        }
+    }
+}
+
+impl UserResult<CxxString> {
+    pub fn extract_inner_as_string(&self) -> Option<String> {
+        match self {
+            UserResult::Ok(ok) => Some(ok.extract_payload_as_string()),
+            UserResult::Fail(_) => None,
         }
     }
 }
@@ -151,12 +180,23 @@ impl OkUserResult<Shared> {
     }
 }
 
+impl OkUserResult<CxxString> {
+    pub fn extract_payload_as_string(&self) -> String {
+        match bridge::extract_string_payload(&self.inner) {
+            Ok(_str) => return _str.to_string_lossy().to_string(),
+            Err(e) => panic!("Failed to extract string payload {}", e.what()),
+        }
+    }
+}
+
 impl FailUserResult {
     pub fn extract_fail_rsn(&self) -> &str {
-        bridge::extract_error_result(&self.inner)
-            .expect("Attempted to access failure reason on a OK result.")
-            .to_str()
-            .expect("Failure reason wasn't valid UTF-8 **this should have never happened, FFI returns a std::string!**")
+        match bridge::extract_error_result(&self.inner) {
+            Ok(_str) => _str
+                .to_str()
+                .expect("Error result was not in UTF-8 format!"),
+            Err(e) => panic!("Failed to extract failure reason: {}", e.what()),
+        }
     }
 }
 

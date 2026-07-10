@@ -1,5 +1,7 @@
 use crate::{generated::generated_object_types::KnownObject, page::Page};
 use std::collections::HashMap;
+
+#[derive(Debug)]
 pub struct ClassifierResultMap(pub HashMap<Page, Vec<KnownObject>>);
 
 impl ClassifierResultMap {

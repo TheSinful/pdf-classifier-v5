@@ -46,6 +46,7 @@ void drop_result(const std::unique_ptr<OpaqueResult> &r) noexcept;
 
 std::unique_ptr<SharedData> extract_shared_payload(const std::unique_ptr<OpaqueResult> &r);
 const std::string &extract_error_result(const std::unique_ptr<OpaqueResult> &r);
+const std::string &extract_string_payload(const std::unique_ptr<OpaqueResult> &r); 
 int get_result_status(const std::unique_ptr<OpaqueResult> &r) noexcept;
 
 std::unique_ptr<OpaqueResult> call_classify(const std::unique_ptr<OpaqueCtx> &o_ctx,

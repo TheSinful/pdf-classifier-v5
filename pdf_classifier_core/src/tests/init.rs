@@ -1,7 +1,12 @@
 use paste::paste;
 use std::path::PathBuf;
+use tracing_subscriber::{
+    EnvFilter, fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt,
+};
+use tracing_tree::HierarchicalLayer;
 
-#[ctor::ctor]
+#[cfg(test)]
+#[ctor::ctor(unsafe)]
 fn init_tests() {
     init_logger();
     set_LARGE_TEST_DOC_test_path();
@@ -68,8 +73,8 @@ def_test_path!(LARGE_TEST_DOC, "../data/large_test_doc.pdf");
 def_test_path!(TEST_OUTPUT_DIR, "target/classifier_tests", true);
 
 fn init_logger() {
-    env_logger::builder()
-        .filter_level(log::LevelFilter::Trace)
-        .is_test(true)
-        .init();
+    tracing_subscriber::registry()
+        .with(HierarchicalLayer::new(2))
+        .try_init()
+        .expect("Failed to register logger!");
 }

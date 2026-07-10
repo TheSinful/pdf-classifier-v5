@@ -1,40 +1,29 @@
+use serde::{Deserialize, Serialize};
 use std::{
     fmt::Display,
-    ops::{Add, Sub},
+    ops::{Add, AddAssign, Deref, Sub},
 };
 
-#[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
-pub struct Page {
-    pub num: u32,
+#[derive(Clone, Copy, Hash, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct Page(pub u32);
+
+impl Deref for Page {
+    type Target = u32;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 impl Display for Page {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&format!("{}", self.num))
+        f.write_str(&format!("{}", self.0))
     }
 }
 
 impl From<usize> for Page {
     fn from(value: usize) -> Self {
-        Self { num: value as u32 }
-    }
-}
-
-impl From<u32> for Page {
-    fn from(value: u32) -> Self {
-        Self { num: value }
-    }
-}
-
-impl Into<u32> for Page {
-    fn into(self) -> u32 {
-        self.num
-    }
-}
-
-impl Into<usize> for Page {
-    fn into(self) -> usize {
-        self.num as usize
+        Self(value as u32)
     }
 }
 
@@ -42,7 +31,13 @@ impl Sub for Page {
     type Output = Page;
 
     fn sub(self, rhs: Self) -> Self::Output {
-        Page::new(self.num - rhs.num)
+        Page(self.0 - rhs.0)
+    }
+}
+
+impl AddAssign for Page {
+    fn add_assign(&mut self, rhs: Self) {
+        self.0 += rhs.0
     }
 }
 
@@ -50,20 +45,16 @@ impl Add for Page {
     type Output = Page;
 
     fn add(self, rhs: Self) -> Self::Output {
-        Page::new(self.num + rhs.num)
+        Page(self.0 + rhs.0)
     }
 }
 
 impl Page {
-    pub fn new(num: u32) -> Self {
-        Page { num }
-    }
-
     pub fn previous(&self) -> Page {
-        Page { num: self.num - 1 }
+        Page(self.0 - 1)
     }
 
     pub fn next(&mut self) -> () {
-        self.num += 1
+        self.0 += 1
     }
 }

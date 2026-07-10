@@ -1,26 +1,26 @@
 use crate::classifiers::committed::CommittedClassifier;
 use crate::classifiers::defer::DeferralClassifier;
 use crate::classifiers::ovstr::OverrideStreamClassifier;
+use crate::classifiers::ovstr::StreamPtr;
 use crate::context::Context;
 use crate::context::ContextError;
-use crate::context::ContextUpdateHistory;
+use crate::generated::generated_object_types::KnownObject;
 use crate::inferencer::InferenceError;
 use crate::inferencer::Inferencer;
 use crate::page::Page;
 use crate::threading::pool::ThreadPool;
+use std::collections::HashMap;
 use std::path::PathBuf;
+use tracing::Level;
+use tracing::field::Empty;
+use tracing::instrument;
+use tracing::span;
 
 mod committed;
 mod defer;
 mod ovstr;
 
 const STEP_COUNT: usize = 1;
-
-pub struct ClassificationStep {
-    pub pages_iterated_over: usize,
-    pub context_updates: ContextUpdateHistory,
-    pub notes: String,
-}
 
 #[derive(thiserror::Error, Debug)]
 pub enum ClassificationError {
@@ -29,8 +29,12 @@ pub enum ClassificationError {
 
     #[error(transparent)]
     ContextRecordError(#[from] ContextError),
+
+    #[error(transparent)]
+    LoggerInitializationError(#[from] tracing_subscriber::util::TryInitError),
 }
 
+#[derive(Debug)]
 enum ClassifierState {
     Committed(CommittedClassifier),
     Deferral(DeferralClassifier),
@@ -60,13 +64,36 @@ impl ClassifierState {
             ),
         }
     }
+
+    pub fn resulted_structure(self) -> HashMap<Page, KnownObject> {
+        match self {
+            ClassifierState::Committed(committed_classifier) => committed_classifier.ctx.pages,
+            ClassifierState::Deferral(deferral_classifier) => deferral_classifier.base.ctx.pages,
+            ClassifierState::OverrideStream(override_stream_classifier) => {
+                override_stream_classifier.base.ctx.pages
+            }
+            ClassifierState::Transition => {
+                panic!("Attempted to get result when classifier was transitioning.")
+            }
+        }
+    }
 }
 
-type StepList = Vec<ClassificationStep>;
-
+#[derive(Debug)]
 pub struct Classifier {
     state: ClassifierState,
     end_page: Page,
+}
+
+macro_rules! ignore_state_change_if {
+    ($condition: expr, $msg: expr, $classifier: expr, $state: expr) => {
+        if $condition {
+            tracing::info!($msg);
+            let _ = $classifier.step()?;
+            $state = ClassifierState::Committed($classifier);
+            continue;
+        }
+    };
 }
 
 impl Classifier {
@@ -87,36 +114,88 @@ impl Classifier {
         }
     }
 
-    pub fn run(mut self) -> Result<StepList, ClassificationError> {
+    #[instrument(skip_all, fields(page = %classifier.current_page))]
+    fn schedule_deferral(&mut self, mut classifier: CommittedClassifier) -> () {
+        while let Some(_) = classifier.poll() {}
+
+        self.state = ClassifierState::Deferral(DeferralClassifier::new(classifier));
+    }
+
+    #[instrument(skip_all, fields(page = %classifier.current_page))]
+    fn schedule_override_stream(
+        &mut self,
+        mut classifier: CommittedClassifier,
+        stream: StreamPtr,
+    ) -> () {
+        while let Some(_) = classifier.poll() {}
+
+        self.state =
+            ClassifierState::OverrideStream(OverrideStreamClassifier::new(stream, classifier))
+    }
+
+    fn exit_deferral(&mut self, classifier: DeferralClassifier) -> Result<(), ClassificationError> {
+        self.state = ClassifierState::Committed(classifier.find_next_independent()?);
+
+        Ok(())
+    }
+
+    #[instrument(name = "exit_override_stream", skip_all, fields(ended_on_page = Empty, ended_on_class = Empty))]
+    fn exit_ovstr(
+        &mut self,
+        classifier: OverrideStreamClassifier,
+    ) -> Result<(), ClassificationError> {
+        self.state = ClassifierState::Committed(classifier.till_stream_end()?);
+
+        let end_page = self.state.current_page();
+        let end_class = self.state.committed().ctx.get_decision(end_page);
+
+        tracing::Span::current()
+            .record("ended_on_page", end_page.0)
+            .record("ended_on_class", &format_args!("{:?}", end_class));
+
+        Ok(())
+    }
+
+    #[instrument(name = "start_classifiation_loop", skip_all, fields(from_page = %self.state.current_page(), to_page = %self.end_page))]
+    pub fn run(mut self) -> Result<HashMap<Page, KnownObject>, ClassificationError> {
         loop {
-            if self.state.current_page().num == self.end_page.num {
-                // SAFETY: internal classifier is dropped here, therefore taking ownership is safe.
-                let mut state = std::mem::replace(&mut self.state, ClassifierState::Transition);
-                let steps = std::mem::replace(&mut state.committed().steps, vec![]);
-                break Ok(steps);
+            let span = span!(
+                Level::INFO,
+                "classification",
+                page = %self.state.current_page()
+            );
+            let _guard = span.enter();
+
+            if self.state.current_page().0 >= self.end_page.0 {
+                break Ok(self.state.resulted_structure());
             }
 
             let state = std::mem::replace(&mut self.state, ClassifierState::Transition);
             match state {
-                ClassifierState::Committed(classifier) => {
+                ClassifierState::Committed(mut classifier) => {
+                    ignore_state_change_if!(
+                        classifier.current_page == classifier.ctx.start_page,
+                        "ignoring state change since first page",
+                        classifier,
+                        self.state
+                    );
+
                     if classifier.should_defer {
-                        self.state = ClassifierState::Deferral(DeferralClassifier::new(classifier));
+                        self.schedule_deferral(classifier);
                     } else if let Some(stream) = classifier.should_enter_override_stream() {
-                        self.state = ClassifierState::OverrideStream(OverrideStreamClassifier::new(
-                            stream, classifier,
-                        ))
+                        self.schedule_override_stream(classifier, stream);
+                    } else {
+                        tracing::debug!("state remained committed.");
+                        let _ = classifier.step()?;
+                        self.state = ClassifierState::Committed(classifier);
                     }
                 }
-                ClassifierState::Deferral(classifier) => {
-                    self.state = ClassifierState::Committed(classifier.find_next_independent()?);
-                }
-                ClassifierState::OverrideStream(classifier) => {
-                    self.state = ClassifierState::Committed(classifier.till_stream_end()?);
-                }
+                ClassifierState::Deferral(classifier) => self.exit_deferral(classifier)?,
+                ClassifierState::OverrideStream(classifier) => self.exit_ovstr(classifier)?,
                 ClassifierState::Transition => unreachable!(
                     "shouldn't be in transitonal stage outside of specific transition states."
                 ),
-            };
+            }
         }
     }
 }

@@ -139,8 +139,11 @@ TableDataCountCell DataTable::parse_count_column(const std::string& text, TableD
   return count_cell;
 }
 
-std::vector<TableDataCell> DataTable::extract_cells() {
+std::vector<TableCellKind> DataTable::extract_cells() {
   calc_column_boundaries();
+  if (column_boundaries.empty()) {
+    throw std::runtime_error("no column boundaries detected — page likely lacks expected table structure");
+  }
 
   fz_rect fig_key_boundary = column_boundaries[0];
   int start_x = static_cast<int>((fig_key_boundary.x0 + 5.0f) * 2.0f);
@@ -151,7 +154,7 @@ std::vector<TableDataCell> DataTable::extract_cells() {
   CellVerticalBoundaryList cell_vertical_boundaries = calc_cell_vertical_boundaires(start_y, end_y, start_x, end_x);
   construct_cells(cell_vertical_boundaries);
 
-  std::vector<TableDataCell> result;
+  std::vector<TableCellKind> result;
   result.reserve(cells.size());
 
   for (auto& item : cells) {
@@ -475,6 +478,9 @@ bool DataTable::is_vertical_line_filled(int x, int start_y, int end_y) {
     }
   }
 
+  if (total_lines == 0)
+    return false;
+
   double fill_percentage = (double)lines_with_content / total_lines;
   return fill_percentage >= FILL_PERCENTAGE_THRESHOLD;
 }
@@ -502,9 +508,10 @@ Result* extract_datatable(uint32_t page, fz_context* ctx, fz_document* doc, void
   DataTable* inst = static_cast<DataTable*>(shared);
 
   try {
-    std::vector<TableDataCell> cells = inst->extract_cells();
+    std::vector<TableCellKind> cells = inst->extract_cells();
+    nlohmann::json j = nlohmann::json{{"table_data", cells}};
 
-    return Result::ok(NULL, NULL);
+    return json_to_payload(j);
   } catch (const std::exception& e) {
     return Result::fail(std::format("failed to extract datatable {}", e.what()));
   }

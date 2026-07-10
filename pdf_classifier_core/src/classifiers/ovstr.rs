@@ -7,27 +7,55 @@ use crate::{
     constraints::overrides::OverrideStreamExitCase,
     context::ContextUpdateHistory,
 };
+use std::fmt::Debug;
+use std::ops::Deref;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 
-pub type StreamList = &'static Mutex<Box<dyn OverrideStream>>;
+pub struct StreamPtr(pub &'static Mutex<Box<dyn OverrideStream>>);
+
+impl Deref for StreamPtr {
+    type Target = Mutex<Box<dyn OverrideStream>>;
+
+    fn deref(&self) -> &Self::Target {
+        self.0
+    }
+}
+
+impl Debug for StreamPtr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple(std::any::type_name::<StreamPtr>())
+            .field(&format_args!("{:p}", &self.0 as *const _))
+            .finish()
+    }
+}
+
 type OverrideStreamBorrow<'a> = MutexGuard<'a, Box<dyn OverrideStream + 'static>>;
 
+#[derive(Debug)]
 pub struct OverrideStreamClassifier {
-    pub for_stream: StreamList,
+    pub for_stream: StreamPtr,
     pub base: CommittedClassifier,
 }
 
 impl OverrideStreamClassifier {
-    pub fn new(for_stream: StreamList, base: CommittedClassifier) -> Self {
+    pub fn new(for_stream: StreamPtr, base: CommittedClassifier) -> Self {
         Self { base, for_stream }
     }
 
     pub fn till_stream_end(mut self) -> Result<CommittedClassifier, ClassificationError> {
+        tracing::info!(
+            "beginning override for: {}",
+            self.for_stream.lock().unwrap()
+        );
         loop {
             let mut stream = self.for_stream.lock().unwrap();
             let history = ContextUpdateHistory::new();
 
+            tracing::trace!(
+                "initialized override step for page: {}",
+                self.base.current_page
+            );
             let step = stream.step(&self.base.ctx, self.base.current_page);
             let _ = self.base.handle_override(step, history)?;
 
@@ -39,6 +67,10 @@ impl OverrideStreamClassifier {
             );
 
             if exit_case {
+                tracing::trace!(
+                    "hit exit case for stream on page {}",
+                    self.base.current_page
+                );
                 return Ok(self.base);
             }
         }
@@ -52,17 +84,21 @@ impl OverrideStreamClassifier {
     ) -> bool {
         match stream.should_exit(ctx, current_page) {
             OverrideStreamExitCase::IfClassifiedAs(class) => {
+                tracing::trace!("evaluating for exit case on page {}", current_page);
+
                 thread_pool.classify_unchecked(class, current_page);
 
                 let results = loop {
-                    if let Some(results) = thread_pool.poll() {
+                    if let Some(results) = thread_pool.poll()
+                        && results.len() > 0
+                    {
                         break results;
                     }
                 };
 
                 debug_assert!(
                     results.len() == 1,
-                    "should only have one classification result while iterating in override stream context!"
+                    "should only have one classification result while iterating in override stream context!",
                 );
 
                 match &results[0] {
@@ -86,7 +122,7 @@ impl OverrideStreamClassifier {
                         page: _,
                         res: _,
                         as_class: _,
-                    } => panic!(
+                    } => unreachable!(
                         "shouldn't have any other job results when polling in override stream context."
                     ),
                 }

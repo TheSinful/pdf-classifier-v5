@@ -14,7 +14,7 @@ impl HardConstraint for IllegalSecondInPair {
     ) -> bool {
         let prev_classifiation = ctx.previous_page_inference(page);
         if !prev_classifiation.is_first_in_pair() && class.is_second_in_pair() {
-            log::trace!(
+            tracing::trace!(
                 "FAIL (IllegalSecondInPair): previous page {} wasn't a primary pair, while class {} is a secondary pair",
                 prev_classifiation,
                 class

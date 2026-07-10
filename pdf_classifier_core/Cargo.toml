@@ -4,18 +4,26 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-ctor = "0.6.3"
 cxx = "1.0.192"
-env_logger = "0.11.9"
 futures = "0.3.31"
-log = "0.4.29"
 paste = "1.0.15"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 thiserror = "2.0.17"
-tokio = { version = "1.48.0", features = ["sync", "macros", "rt"] }
+tokio = { version = "1.48.0", features = [
+    "sync",
+    "macros",
+    "rt",
+    "rt-multi-thread",
+] }
 trace = "0.1.7"
 pdf_classifier_macros = { path = "../pdf_classifier_macros" }
+clap = { version = "4.6.1" }
+clap_derive = { version = "4.0.0-rc.1" }
+tracing = { version = "0.1.44", features = ["log"] }
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+tracing-tree = "0.4.1"
+ctor = "1.0.7"
 
 [build-dependencies]
 cxx-build = "1.0.192"

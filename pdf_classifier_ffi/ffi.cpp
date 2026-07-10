@@ -86,18 +86,21 @@ std::unique_ptr<OpaqueResult> call_classify(const std::unique_ptr<OpaqueCtx> &o_
     {
         typedef Result *(*classify_func)(uint32_t, fz_context *, fz_document *);
         classify_func fn = reinterpret_cast<classify_func>(ptr);
-        Result *res = fn(page, ctx, doc);
 
-        if (!res)
+        Result *res;
+        try
         {
-            throw std::runtime_error("classify returned null for " + obj);
+            res = fn(page, ctx, doc);
+        }
+        catch (const std::exception &e)
+        {
+            return std::make_unique<OpaqueResult>(Result::fail(e.what()));
         }
 
+        if (!res)
+            throw std::runtime_error("classify returned null for " + obj);
+
         return std::make_unique<OpaqueResult>(res);
-    }
-    else
-    {
-        throw std::runtime_error("couldn't find classify func ptr " + obj);
     }
 }
 
@@ -196,8 +199,31 @@ const std::string &extract_error_result(const std::unique_ptr<OpaqueResult> &r)
     return inner->fail_rsn;
 }
 
+const std::string &extract_string_payload(const std::unique_ptr<OpaqueResult> &r)
+{
+    Result *inner = reinterpret_cast<Result *>(r->ptr);
+    if (inner->type == Result::FAIL)
+    {
+        throw std::runtime_error("Attempted to access string payload on a FAIL result.");
+    }
+
+    if (inner->payload == NULL)
+    {
+        throw std::runtime_error("Given nullptr for string payload!");
+    }
+
+    return *static_cast<std::string *>(inner->payload);
+}
+
 int get_result_status(const std::unique_ptr<OpaqueResult> &r) noexcept
 {
     Result *inner = reinterpret_cast<Result *>(r->ptr);
-    return static_cast<int>(inner->type);
+    if (inner->type == Result::OK)
+    {
+        return 0;
+    }
+    else
+    {
+        return 1;
+    }
 }

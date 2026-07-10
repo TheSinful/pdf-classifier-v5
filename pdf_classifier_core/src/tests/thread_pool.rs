@@ -1,12 +1,13 @@
 use crate::constants::test_constants::FIRST_CHAPTER_PAGE;
 use crate::generated::generated_object_types::KnownObject;
+use crate::page::Page;
 use crate::tests::init::get_LARGE_TEST_DOC_test_path;
 use crate::threading::pool::*;
 
 #[test]
 fn test_poll() {
     let mut pool = ThreadPool::new(4, get_LARGE_TEST_DOC_test_path());
-    pool.classify(KnownObject::CHAPTER, FIRST_CHAPTER_PAGE.into());
+    pool.classify(KnownObject::CHAPTER, Page(FIRST_CHAPTER_PAGE));
 
     let mut _prev = 0;
     let mut _classified = false;
@@ -35,7 +36,7 @@ fn test_poll() {
 
                 dbg!(
                     "Classified page {} as class {}",
-                    page.num,
+                    page.0,
                     as_class.to_string()
                 );
 
@@ -54,7 +55,7 @@ fn test_poll() {
 
                 dbg!(
                     "Extracted page {} as class {}",
-                    page.num,
+                    page.0,
                     as_class.to_string()
                 );
 

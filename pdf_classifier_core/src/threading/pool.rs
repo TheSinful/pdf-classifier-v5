@@ -5,14 +5,18 @@ use crate::{
     page::Page,
     threading::{ClassifyFuturePayload, ExtractionFuturePayload, JobType, WorkerThread},
 };
+use cxx::CxxString;
 use futures::task::noop_waker_ref;
 use futures::{StreamExt, stream::FuturesUnordered};
 use std::collections::HashMap;
+use std::fmt::{Debug, Display};
 use std::{
     path::PathBuf,
     task::{Context, Poll},
 };
+use tracing::{debug_span, instrument};
 
+#[derive(Debug)]
 pub struct ThreadPool {
     pub queue: Vec<PendingJob>,
     busy_workers: Vec<WorkerThread>,
@@ -22,9 +26,9 @@ pub struct ThreadPool {
     extraction_futures:
         FuturesUnordered<Box<dyn Future<Output = ExtractionFuturePayload> + 'static + Unpin>>,
     pending_extract_shared: HashMap<Page, Box<OkUserResult<Shared>>>,
-    // current_defer: IncompleteDeferBlockPtr,
 }
 
+#[derive(Debug)]
 pub struct PendingJob {
     class: KnownObject,
     page: Page,
@@ -39,9 +43,38 @@ pub enum JobResult {
     },
     Extraction {
         page: Page,
-        res: UserResult<()>, // classifier decides what to do with extracted data, (currently nothing, but in the future should be some ambigous type that can be passed to py)
+        res: UserResult<CxxString>, // classifier decides what to do with extracted data, (currently nothing, but in the future should be some ambigous type that can be passed to py)
         as_class: KnownObject,
     },
+}
+
+impl Display for JobResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            JobResult::Classification {
+                page,
+                res,
+                as_class,
+            } => write!(
+                f,
+                "ClassificationJob {{page: {}, is_ok: {}, class: {}}}",
+                page,
+                res.is_ok(),
+                as_class
+            ),
+            JobResult::Extraction {
+                page,
+                res,
+                as_class,
+            } => write!(
+                f,
+                "ExtractionJob {{page: {}, is_ok: {}, class: {}}}",
+                page,
+                res.is_ok(),
+                as_class
+            ),
+        }
+    }
 }
 
 impl ThreadPool {
@@ -53,7 +86,7 @@ impl ThreadPool {
             available_workers.push(worker);
         }
 
-        log::trace!(
+        tracing::trace!(
             "initialized threadpool with {} workers",
             available_workers.len()
         );
@@ -79,23 +112,13 @@ impl ThreadPool {
         }
 
         while let Poll::Ready(Some(fut)) = self.classification_futures.poll_next_unpin(&mut cx) {
-            results.push(self.handle_classification_result(
-                fut.class,
-                fut.page,
-                fut.result,
-                fut.worker_id,
-            ));
+            results.push(self.handle_classification_result(fut.class, fut.page, fut.result));
 
             self.push_worker_to_available(fut.worker_id, &fut.page);
         }
 
         while let Poll::Ready(Some(fut)) = self.extraction_futures.poll_next_unpin(&mut cx) {
-            results.push(self.handle_extraction_result(
-                fut.class,
-                fut.page,
-                fut.result,
-                fut.worker_id,
-            ));
+            results.push(self.handle_extraction_result(fut.class, fut.page, fut.result));
 
             self.push_worker_to_available(fut.worker_id, &fut.page);
         }
@@ -121,6 +144,8 @@ impl ThreadPool {
             return None;
         };
 
+        let _span = debug_span!("work_available_worker", worker = worker.id).entered();
+
         match pending.job_type {
             JobType::Classification => {
                 self.push_classification_to_worker(pending.class, pending.page, &worker)
@@ -132,17 +157,12 @@ impl ThreadPool {
             }
         };
 
-        log::trace!("worker {} is now busy", worker.id);
         self.busy_workers.push(worker);
         Some(())
     }
 
+    #[instrument(name = "push_classification_job", skip(self), fields(available_workers = self.available_workers_count()))]
     pub fn classify(&mut self, class: KnownObject, page: Page) -> () {
-        log::trace!(
-            "pushing new classification job to queue, {} available workers currently",
-            self.available_workers_count()
-        );
-
         self.queue.push(PendingJob {
             class,
             page,
@@ -150,9 +170,12 @@ impl ThreadPool {
         })
     }
 
+    #[instrument(name = "push_extraction_job", skip(self), fields(available_workers = self.available_workers_count()))]
     pub fn extract(&mut self, class: KnownObject, page: Page) -> () {
-        log::trace!(
-            "pushing new extraction job to queue, {} available workers currently",
+        tracing::trace!(
+            "pushing extraction job: {}, pg{} ({} workers)",
+            class,
+            page,
             self.available_workers_count()
         );
 
@@ -163,18 +186,12 @@ impl ThreadPool {
         })
     }
 
+    #[instrument(name = "push_unchecked_classification_job", skip(self), fields(available_workers = self.available_workers_count()))]
     pub fn classify_unchecked(&mut self, class: KnownObject, page: Page) -> () {
         let worker = self
             .available_workers
             .pop()
             .expect("should've had an available worker when spawning a thread unsafely.");
-
-        log::trace!(
-            "[WORKER {}] unsafely classifying page {} as class {}",
-            worker.id,
-            page,
-            class
-        );
 
         self.push_classification_to_worker(class, page, &worker);
         self.busy_workers.push(worker);
@@ -188,7 +205,7 @@ impl ThreadPool {
             .map(|idx| self.busy_workers.remove(idx))
             .expect(&format!(
                 "Expected a worker with id {} from page {}",
-                id, page.num
+                id, page.0
             ));
 
         self.available_workers.push(found);
@@ -199,17 +216,9 @@ impl ThreadPool {
         class: KnownObject,
         page: Page,
         res: ClassificationResult,
-        worker_id: u32,
     ) -> JobResult {
         match res {
             UserResult::Ok(res) => {
-                log::trace!(
-                    "[WORKER {}] classification on page {} as class {} was successful.",
-                    worker_id,
-                    page.num,
-                    class.to_string()
-                );
-
                 let res_ptr = Box::new(res);
 
                 self.pending_extract_shared.insert(page, res_ptr);
@@ -221,21 +230,11 @@ impl ThreadPool {
                     as_class: class,
                 }
             }
-            UserResult::Fail(res) => {
-                log::trace!(
-                    "[WORKER {}] classification on page {} as class {}, failed with err {}.",
-                    worker_id,
-                    page.num,
-                    class.to_string(),
-                    res.extract_fail_rsn().to_string(),
-                );
-
-                JobResult::Classification {
-                    page,
-                    res: Err(res.extract_fail_rsn().to_string()),
-                    as_class: class,
-                }
-            }
+            UserResult::Fail(res) => JobResult::Classification {
+                page,
+                res: Err(res.extract_fail_rsn().to_string()),
+                as_class: class,
+            },
         }
     }
 
@@ -243,18 +242,10 @@ impl ThreadPool {
         &self,
         class: KnownObject,
         page: Page,
-        res: UserResult<()>,
-        worker_id: u32,
+        res: UserResult<CxxString>,
     ) -> JobResult {
         match res {
             UserResult::Ok(_) => {
-                log::trace!(
-                    "[WORKER {}] extraction on page {} as class {} was successful",
-                    worker_id,
-                    page.num,
-                    class.to_string(),
-                );
-
                 // TODO: export data, currently just goes to user to write to a file
                 JobResult::Extraction {
                     page,
@@ -262,21 +253,11 @@ impl ThreadPool {
                     as_class: class,
                 }
             }
-            UserResult::Fail(_) => {
-                log::trace!(
-                    "[WORKER {}] extraction on page {} as class {} failed with err {}",
-                    worker_id,
-                    page.num,
-                    class.to_string(),
-                    res.fail_rsn().unwrap(),
-                );
-
-                JobResult::Extraction {
-                    page,
-                    res,
-                    as_class: class,
-                }
-            }
+            UserResult::Fail(_) => JobResult::Extraction {
+                page,
+                res,
+                as_class: class,
+            },
         }
     }
 

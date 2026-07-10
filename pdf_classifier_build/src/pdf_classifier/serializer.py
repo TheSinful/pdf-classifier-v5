@@ -4,8 +4,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 class Serializer:     
-    def _fmt_payload(self, payload: list[str], conjoined: str = "\n") -> str: 
-        return conjoined.join(payload) 
+    def _fmt_payload(self, payload: list[str], prefix: str = "\n") -> str: 
+        return prefix.join(payload) 
     
     def _dump_data(self, into: Path, data: str) -> None: 
         logger.debug("Writing %d bytes to %s", len(data), into)

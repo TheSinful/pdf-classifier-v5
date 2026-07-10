@@ -44,4 +44,8 @@ Result* classify_diagram(uint32_t page, fz_context* ctx, fz_document* doc) {
   return Result::ok(inst.release(), deleter_Diagram);
 }
 
-Result* extract_diagram(uint32_t page, fz_context* ctx, fz_document* doc, void* shared) { return Result::ok(NULL, NULL); }
+Result* extract_diagram(uint32_t page, fz_context* ctx, fz_document* doc, void* shared) {
+  Diagram* inst = static_cast<Diagram*>(shared);
+  std::string* data = new std::string(std::format("{{ \"fig_num\": {}, caption: \"{}\" }}", inst->fig_num, inst->caption));
+  return Result::ok(data, deleter_StdString);
+}

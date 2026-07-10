@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 // !
 // ! Instead of sequentially classifying pages one-by-one, this classifier uses **speculative
 // ! branching** to parallelize document understanding across N threads. Each thread has its own
@@ -36,7 +34,7 @@
 // ! Pages 4-10 that we thought belonged to the old parent now belong under the new subchapter at page 3.
 // !
 // !
-// ! Traditional sequential classifiers try every object type until one succeeds (expensive).
+// ! Traditional sequential classifiers try every object type until rone succeeds (expensive).
 // ! This classifier **guesses correctly most of the time** by learning patterns, so the expensive
 // ! classification work happens in parallel over already-likely-correct predictions.
 // ! Maybe utilize a single thread for spawning? So after "cooking" a batch of predictions,
@@ -49,13 +47,69 @@ mod context;
 mod ffi;
 mod generated;
 mod inferencer;
-mod macros;
 mod obj_list;
 mod page;
 mod result_map;
 mod score;
+mod stream;
 #[cfg(test)]
 mod tests;
 mod threading;
 
-fn main() {}
+use crate::{
+    classifiers::{ClassificationError, Classifier},
+    page::Page,
+};
+use clap::Parser;
+use clap_derive::Parser;
+use std::path::PathBuf;
+use tracing::level_filters::LevelFilter;
+use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_tree::HierarchicalLayer;
+
+#[derive(Parser)]
+struct Args {
+    #[arg(short = 's', default_value_t = 0)]
+    start_page: u32,
+
+    #[arg(short = 'l', long = "log_level", default_value = "info")]
+    log_level: LevelFilter,
+
+    #[arg(short = 'e')]
+    end_page: u32,
+
+    #[arg(short = 't')]
+    threads: usize,
+
+    #[arg(short = 'p')]
+    doc_path: String,
+}
+
+fn main() -> Result<(), ClassificationError> {
+    let args = Args::parse();
+
+    tracing_subscriber::registry()
+        .with(HierarchicalLayer::new(4))
+        .with(EnvFilter::new(format!(
+            "error,pdf_classifier_core={}",
+            args.log_level.to_string()
+        )))
+        .try_init()
+        .expect("Failed to register logger!");
+
+    tracing::info!("Accepted arguments, initializing classifier...");
+
+    let classifier = Classifier::new(
+        Page(args.start_page),
+        Page(args.end_page),
+        args.threads,
+        PathBuf::from(args.doc_path),
+    );
+
+    classifier
+        .run()?
+        .iter()
+        .for_each(|(page, class)| println!("{} -> {}", page, class));
+
+    Ok(())
+}

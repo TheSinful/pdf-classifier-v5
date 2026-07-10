@@ -1,5 +1,10 @@
 #include "chapter.hpp"
+#include <filesystem>
+#include <fstream>
 #include <regex>
+
+using nlohmann::json;
+using namespace std::filesystem;
 
 Result* Chapter::contains_valid_chapter_text() {
   int upper_freq = frequency_of("CHAPTER", compressed_text, 1);
@@ -43,6 +48,22 @@ Result* Chapter::extract_chapter_number() {
   return Result::fail("no chapter number could be found within text of page.");
 }
 
+void Chapter::extract_expected_subchapters() {
+  std::regex pattern = std::regex(std::format(R"({}-\d+)", chapter_number), std::regex_constants::icase);
+
+  for (std::sregex_iterator it(compressed_text.begin(), compressed_text.end(), pattern); it != std::sregex_iterator{};
+       ++it) {
+    const std::smatch& match = *it;
+    std::string matched_text = match.str();
+
+    ExpectedSubchapter subchapter;
+    subchapter.sub_chapter_num = matched_text;
+    subchapter.path = std::format("./sub_chapter_{}", matched_text);
+
+    expected_subchapters.emplace_back(subchapter);
+  }
+}
+
 void deleter_Chapter(void* p) { delete static_cast<Chapter*>(p); }
 
 Result* classify_chapter(uint32_t page, fz_context* ctx, fz_document* doc) {
@@ -56,5 +77,10 @@ Result* classify_chapter(uint32_t page, fz_context* ctx, fz_document* doc) {
 
 Result* extract_chapter(uint32_t page, fz_context* ctx, fz_document* doc, void* shared) {
   Chapter* inst = static_cast<Chapter*>(shared);
-  return Result::ok(NULL, NULL);
+
+  inst->extract_expected_subchapters();
+
+  json data = nlohmann::json{{"chapter_num", inst->chapter_number}, {"sub_chapters", inst->expected_subchapters}};
+
+  return json_to_payload(data);
 }

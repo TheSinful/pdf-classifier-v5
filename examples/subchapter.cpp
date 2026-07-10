@@ -58,4 +58,10 @@ Result* classify_subchapter(uint32_t page, fz_context* ctx, fz_document* doc) {
   return Result::ok(inst.release(), deleter_SubChapter);
 }
 
-Result* extract_subchapter(uint32_t page, fz_context* ctx, fz_document* doc, void* shared) { return Result::ok(NULL, NULL); }
+Result* extract_subchapter(uint32_t page, fz_context* ctx, fz_document* doc, void* shared) {
+  SubChapter* inst = static_cast<SubChapter*>(shared);
+
+  std::string* str = new std::string(std::format("{{\"subchapter_num\": \"{}\"}}", inst->subchapter_number));
+
+  return Result::ok(str, deleter_StdString);
+}

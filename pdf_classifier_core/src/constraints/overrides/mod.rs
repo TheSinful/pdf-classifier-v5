@@ -11,6 +11,7 @@ use crate::page::Page;
 use pdf_classifier_macros::impl_instansiated_constraint_enum;
 use std::fmt::Display;
 
+#[derive(Debug)]
 pub enum OverrideAction {
     Skip,
     InferAs(KnownObject),

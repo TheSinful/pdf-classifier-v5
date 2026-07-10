@@ -36,32 +36,28 @@ protected:
   uint32_t page_num;
 
   int frequency_of(const std::string& substr, const std::string& within, int max_errors) {
-    if (substr.empty())
+    if (substr.empty() || within.size() < substr.size())
       return 0;
 
     int count = 0;
-    const int substr_len = static_cast<int>(substr.length());
-    const int str_len = static_cast<int>(within.length());
+    const size_t substr_len = substr.length();
 
-    for (size_t i = 0; i <= str_len - substr_len; ++i) {
+    for (size_t i = 0; i + substr_len <= within.size(); ++i) {
       std::string window = within.substr(i, substr_len);
-      if (levenshtein_distance(substr, window) <= max_errors) {
-        count++;
-      }
+      if (levenshtein_distance(substr, window) <= max_errors)
+        ++count;
     }
-
     return count;
   }
 
-  bool contains_text(const std::string& substr, const std::string& str) {
-    return str.find(substr) != std::string::npos;
-  }
+  bool contains_text(const std::string& substr, const std::string& str) { return str.find(substr) != std::string::npos; }
 
   bool has_image() {
     if (checked_img) {
       return true;
     }
 
+    bool found = false;
     fz_try(ctx) {
       pdf_page* pdf_page = pdf_page_from_fz_page(ctx, page);
       if (!pdf_page) {
@@ -84,7 +80,8 @@ protected:
         pdf_obj* subtype = pdf_dict_get(ctx, obj, PDF_NAME(Subtype));
 
         if (pdf_name_eq(ctx, subtype, PDF_NAME(Image))) {
-          return true;
+          found = true;
+          break;
         }
       }
     }
@@ -92,7 +89,7 @@ protected:
       throw std::runtime_error(std::format("Error checking page resources for images: {}", fz_caught_message(ctx)));
     }
 
-    return false;
+    return found;
   }
 
 private:
@@ -165,29 +162,32 @@ private:
       }
     }
     fz_catch(ctx) {
-      throw std::runtime_error(
-          std::format("failed to extract text from page {}, {}", page_num, fz_caught_message(ctx)));
+      throw std::runtime_error(std::format("failed to extract text from page {}, {}", page_num, fz_caught_message(ctx)));
     }
   }
 
   void compress_text() {
-    if (extracted_text.empty()) {
-      return;
-    }
+    try {
+      if (extracted_text.empty()) {
+        return;
+      }
 
-    size_t length = 0;
-    for (const auto& entry : extracted_text) {
-      length += entry.text.length();
+      size_t length = 0;
+      for (const auto& entry : extracted_text) {
+        length += entry.text.length();
+
+        if (length > 0)
+          length += 1; // Add separator
+      }
 
       if (length > 0)
-        length += 1; // Add separator
-    }
+        length -= 1; // Remove separator
 
-    if (length > 0)
-      length -= 1; // Remove separator
-
-    for (const PdfText& entry : extracted_text) {
-      compressed_text.append(entry.text + '\n');
+      for (const PdfText& entry : extracted_text) {
+        compressed_text.append(entry.text + '\n');
+      }
+    } catch (const std::runtime_error& e) {
+      throw std::runtime_error(std::format("failed to compress text: {}", e.what()));
     }
   }
 

@@ -66,6 +66,8 @@ class CppFuncMapGenerator(Serializer):
             static const std::vector<Func> ClassifyFuncMap = {{
                 {self._fmt_payload(classify_func_entries)}
             }};
+            
+            static const std::string classify_func_names = "{self._fmt_payload([func.for_class for func in self.expected_classify_funcs], " ,")}";
         """)
     
     def _extract_func_map(self): 
@@ -78,4 +80,6 @@ class CppFuncMapGenerator(Serializer):
             static const std::vector<Func> ExtractFuncMap = {{
                 {self._fmt_payload(extract_func_entries)}
             }};
+            
+            static const std::string extract_func_names = "{self._fmt_payload([func.for_class for func in self.expected_extract_funcs], " ,")}";            
         """)

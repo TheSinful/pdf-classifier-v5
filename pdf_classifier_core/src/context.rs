@@ -8,6 +8,7 @@ use crate::{
 };
 use std::{collections::HashMap, ops::Index};
 
+#[derive(Debug)]
 pub struct Context {
     pub pages: HashMap<Page, KnownObject>,
     pub page_count: usize,
@@ -18,6 +19,7 @@ pub struct Context {
     pub guarantee_failures: ClassifierResultMap,
 }
 
+#[derive(Debug)]
 pub enum ContextUpdate {
     Decision(Page, KnownObject),
     NewParent(KnownObject),
@@ -33,8 +35,13 @@ pub type ContextUpdateHistory = Vec<ContextUpdate>;
 
 impl Context {
     pub fn new(start_page: Page, end_page: Page) -> Self {
-        let page_count = (end_page.num - start_page.num) as usize;
+        let page_count = (end_page.0 - start_page.0) as usize;
 
+        tracing::info!(
+            "initialized context with page range: [{},{}]",
+            start_page,
+            end_page
+        );
         Self {
             pages: HashMap::new(),
             page_count,
@@ -46,17 +53,20 @@ impl Context {
         }
     }
 
-    pub fn previous_page_inference(&self, from_page: Page) -> &KnownObject {
-        if self.is_first_page(from_page) {
-            panic!("Attempted to access previous page of page 0 (no negative pages exist)")
-        } else if from_page.num > self.end_page.num {
+    pub fn previous_page_inference(&self, current_page: Page) -> &KnownObject {
+        if self.is_first_page(current_page) {
+            panic!(
+                "Attempted to access previous page of page {} (no negative pages exist)",
+                current_page
+            )
+        } else if current_page.0 > self.end_page.0 {
             panic!(
                 "Attempted to access previous page of a page outside page bounds! ({} > {})",
-                from_page.num, self.page_count
+                current_page.0, self.page_count
             );
         }
 
-        self.pages.index(&(from_page - 1u32.into()))
+        self.pages.index(&current_page.previous())
     }
 
     pub fn is_first_page(&self, page: Page) -> bool {
@@ -67,13 +77,17 @@ impl Context {
         self.guarantee_failures.insert_in_page(page, class);
     }
 
+    pub fn get_decision(&self, page: Page) -> Option<&KnownObject> {
+        self.pages.get(&page)
+    }
+
     fn update_current_parent(
         &mut self,
         page: Page,
         class: KnownObject,
         difference_history: &mut ContextUpdateHistory,
     ) -> () {
-        log::trace!("current parent updated to {}", class.to_string());
+        tracing::debug!("current parent updated to {}", class.to_string());
         self.prev_parents.insert_in_page(page, self.current_parent);
         self.current_parent = class;
         difference_history.push(ContextUpdate::NewParent(class));
