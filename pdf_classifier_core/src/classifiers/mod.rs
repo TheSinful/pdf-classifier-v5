@@ -149,7 +149,7 @@ impl Classifier {
         let end_page = self.state.current_page();
         let committed = self.state.committed();
         if let Some(end_class) = committed.ctx.get_decision(end_page) {
-            committed.decide_and_classify_as(*end_class, end_page);
+            committed.decide_and_classify_as(*end_class, end_page)?;
         };
 
         Ok(())
