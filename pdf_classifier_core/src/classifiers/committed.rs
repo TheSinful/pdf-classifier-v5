@@ -11,11 +11,11 @@ use crate::generated::overrides::OVERRIDE_STREAMS;
 use crate::inferencer::Inferencer;
 use crate::obj_list::KnownObjectList;
 use crate::page::Page;
+use crate::page_lock::PageLock;
 use crate::stream::Streamer;
 use crate::threading::pool::ThreadPool;
 use crate::{generated::overrides::OVERRIDES, threading::pool::JobResult};
 use cxx::CxxString;
-use tracing::Level;
 use tracing::debug_span;
 use tracing::info;
 use tracing::instrument;
@@ -23,13 +23,12 @@ use tracing::instrument;
 // intentionally a "transparent" struct so other classifier modes can depend upon it
 #[derive(Debug)]
 pub struct CommittedClassifier {
-    pub current_page: Page,
     pub inferencer: Inferencer,
     pub thread_pool: ThreadPool,
     pub should_defer: bool,
     pub ctx: Context,
     pub streamer: Option<Streamer>,
-    pub no_increment: bool,
+    pub page_lock: PageLock,
 }
 
 impl CommittedClassifier {
@@ -40,12 +39,11 @@ impl CommittedClassifier {
         context: Context,
     ) -> Self {
         Self {
-            current_page: start_page,
+            page_lock: PageLock::Unlocked(start_page),
             inferencer,
             thread_pool,
             ctx: context,
             should_defer: false,
-            no_increment: false,
             streamer: Some(
                 Streamer::new()
                     .expect("cannot initialize classification without linking to a frontend!"),
@@ -61,17 +59,17 @@ impl CommittedClassifier {
         context: Context,
     ) -> Self {
         Self {
-            current_page: start_page,
+            page_lock: PageLock::Unlocked(start_page),
             inferencer,
             thread_pool,
             ctx: context,
             should_defer: false,
-            no_increment: false,
+            // no_increment: false,
             streamer: None,
         }
     }
 
-    #[instrument(skip(self), fields(current_page = %self.current_page, err))]
+    #[instrument(skip(self), fields(current_page = %self.current_page(), err))]
     pub fn step(&mut self) -> Result<(), ClassificationError> {
         self.step_inner()?;
         self.poll();
@@ -79,22 +77,27 @@ impl CommittedClassifier {
         Ok(())
     }
 
+    pub fn current_page(&self) -> Page {
+        *self.page_lock.get()
+    }
+
     pub fn step_inner(&mut self) -> Result<(), ClassificationError> {
         let history = ContextUpdateHistory::new();
-        let winner =
-            self.inferencer
-                .infer(&mut self.ctx, self.current_page, &KnownObjectList::new())?;
+        let current_page = self.current_page();
+        let winner = self
+            .inferencer
+            .infer(&mut self.ctx, current_page, &KnownObjectList::new())?;
 
         if winner == KnownObject::UNKNOWN {
-            return self.decide_as(KnownObject::UNKNOWN, history, self.current_page);
+            return self.decide_as(KnownObject::UNKNOWN, history, self.current_page());
         }
 
         if let Some(action) = self._override(winner) {
             return self.handle_override(action, history);
         }
 
-        self.thread_pool.classify(winner, self.current_page);
-        self.decide_as(winner, history, self.current_page)
+        self.thread_pool.classify(winner, self.current_page());
+        self.decide_as(winner, history, self.current_page())
     }
 
     #[instrument(skip(self, history))]
@@ -105,15 +108,15 @@ impl CommittedClassifier {
     ) -> Result<(), ClassificationError> {
         match override_result {
             OverrideAction::Skip => {
-                self.decide_as(KnownObject::UNKNOWN, history, self.current_page)
+                self.decide_as(KnownObject::UNKNOWN, history, self.current_page())
             }
             OverrideAction::InferAs(class) => {
-                self.thread_pool.classify(class, self.current_page);
-                self.decide_as(class, history, self.current_page)
+                self.thread_pool.classify(class, self.current_page());
+                self.decide_as(class, history, self.current_page())
             }
             OverrideAction::ClassifyAs(class) => {
-                self.thread_pool.extract(class, self.current_page);
-                self.decide_as(class, history, self.current_page)
+                self.thread_pool.extract(class, self.current_page());
+                self.decide_as(class, history, self.current_page())
             }
         }
     }
@@ -131,22 +134,8 @@ impl CommittedClassifier {
         Ok(())
     }
 
-    /// #[instrument(level = DEBUG, skip_all, fields(to_page))]
-    /// when:
-    ///      self.no_increment == false
     fn increment_current_page(&mut self, by: Page) -> () {
-        if self.no_increment {
-            return;
-        }
-
-        let _span = debug_span!(
-            "increment_current_page",
-            from_page = %self.current_page,
-            to_page = %(self.current_page + by)
-        )
-        .entered();
-
-        self.current_page += by;
+        let _ = self.page_lock.increment_by(by);
     }
 
     #[instrument(skip(self))]
@@ -162,17 +151,17 @@ impl CommittedClassifier {
         Ok(())
     }
 
-    #[instrument(skip(self), fields(page = %self.current_page, winner), ret)]
+    #[instrument(skip(self), fields(page = %self.current_page(), winner), ret)]
     pub fn _override(&self, winner: KnownObject) -> Option<OverrideAction> {
         for over in OVERRIDES {
-            let action = over.eval(&self.ctx, winner, self.current_page);
+            let action = over.eval(&self.ctx, winner, self.current_page());
             if action.is_none() {
                 continue;
             }
 
             let action = action.unwrap();
             tracing::trace!(
-                page = %self.current_page,
+                page = %self.current_page(),
                 r#override = %over,
             );
 
@@ -181,7 +170,6 @@ impl CommittedClassifier {
 
         None
     }
-
 
     pub fn poll(&mut self) -> Option<()> {
         if let Some(results) = self.thread_pool.poll() {
@@ -200,7 +188,7 @@ impl CommittedClassifier {
                     } => self.handle_extraction_result(page, as_class, res),
                 });
             }
-            return Some(()); 
+            return Some(());
         }
         None
     }
@@ -261,17 +249,17 @@ impl CommittedClassifier {
             !self.should_defer,
             "Shouldn't attempt to defer when already in deferral."
         );
+        self.should_defer = true;
 
         let _span = debug_span!(
             "signal_deferral",
-            page = %self.current_page,
+            page = %self.current_page(),
             tasks_in_queue = self.thread_pool.queue.len()
-        );
+        )
+        .entered();
 
         info!("polling before entering deferral");
         while let Some(_) = self.poll() {}
-
-        self.should_defer = true
     }
 
     pub fn should_enter_override_stream(&self) -> Option<StreamPtr> {
@@ -279,7 +267,7 @@ impl CommittedClassifier {
             if stream
                 .lock()
                 .unwrap()
-                .should_enter(&self.ctx, self.current_page)
+                .should_enter(&self.ctx, self.current_page())
             {
                 return Some(StreamPtr(stream));
             }

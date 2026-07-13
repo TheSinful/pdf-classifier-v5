@@ -54,14 +54,14 @@ impl OverrideStreamClassifier {
 
             tracing::trace!(
                 "initialized override step for page: {}",
-                self.base.current_page
+                self.base.current_page()
             );
-            let step = stream.step(&self.base.ctx, self.base.current_page);
-            let _ = self.base.handle_override(step, history)?;
+            let step = stream.step(&self.base.ctx, self.base.current_page());
+            self.base.handle_override(step, history)?;
 
             let exit_case = Self::should_break_from_exit_case(
                 &self.base.ctx,
-                self.base.current_page,
+                self.base.current_page(),
                 &mut self.base.thread_pool,
                 stream,
             );
@@ -69,7 +69,7 @@ impl OverrideStreamClassifier {
             if exit_case {
                 tracing::trace!(
                     "hit exit case for stream on page {}",
-                    self.base.current_page
+                    self.base.current_page()
                 );
                 return Ok(self.base);
             }
@@ -109,7 +109,10 @@ impl OverrideStreamClassifier {
                     } => {
                         debug_assert!(
                             page == &current_page,
-                            "expected singular result page to match current page while in override stream context."
+                            "expected to remain in a sequential iteration while in override stream,
+                            but received a result for page {} while current page is {}",
+                            page,
+                            current_page
                         );
                         debug_assert!(
                             as_class == &class,

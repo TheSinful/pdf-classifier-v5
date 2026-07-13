@@ -55,6 +55,7 @@ mod stream;
 #[cfg(test)]
 mod tests;
 mod threading;
+mod page_lock; 
 
 use crate::{
     classifiers::{ClassificationError, Classifier},
