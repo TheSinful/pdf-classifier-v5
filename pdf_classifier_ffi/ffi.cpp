@@ -101,7 +101,9 @@ std::unique_ptr<OpaqueResult> call_classify(const std::unique_ptr<OpaqueCtx> &o_
             throw std::runtime_error("classify returned null for " + obj);
 
         return std::make_unique<OpaqueResult>(res);
-    }
+    } else {
+        throw std::runtime_error("couldn't call classify func ptr " + obj);
+    } 
 }
 
 std::unique_ptr<OpaqueResult> call_extract(const std::unique_ptr<OpaqueCtx> &o_ctx, const std::unique_ptr<OpaqueDoc> &o_doc, const std::unique_ptr<SharedData> &shared, const std::string &obj, uint32_t page)
@@ -135,7 +137,7 @@ std::unique_ptr<OpaqueResult> call_extract(const std::unique_ptr<OpaqueCtx> &o_c
     }
     else
     {
-        throw std::runtime_error("couldn't find classify func ptr " + obj);
+        throw std::runtime_error("couldn't find extract func ptr " + obj);
     }
 }
 
