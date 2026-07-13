@@ -85,8 +85,9 @@ impl DeferralClassifier {
 
         while let Some(_) = self.base.poll() {}
 
+        self.base.should_defer = false;
         self.base.no_increment = self.original_no_increment;
-        self.base.current_page = self.current_page;
+        self.base.current_page = self.get_end_page();
         self.base.current_page.next();
 
         Ok(self.base)
