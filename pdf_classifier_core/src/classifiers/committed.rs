@@ -135,7 +135,9 @@ impl CommittedClassifier {
     }
 
     fn increment_current_page(&mut self, by: Page) -> () {
-        let _ = self.page_lock.increment_by(by);
+        // intentionally a no-op while deferral holds the lock: backfill
+        // decisions must not advance the committed cursor
+        let _ = self.page_lock.try_increment_by(by);
     }
 
     #[instrument(skip(self))]

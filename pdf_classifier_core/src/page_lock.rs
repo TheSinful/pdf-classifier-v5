@@ -1,6 +1,5 @@
-use tracing::{debug_span, span::EnteredSpan};
-
 use crate::page::Page;
+use tracing::instrument;
 
 type CurrentPage = Page;
 
@@ -25,34 +24,34 @@ impl PageLock {
         }
     }
 
-    pub fn increment(&mut self) -> Option<()> {
+    #[instrument]
+    pub fn increment(&mut self) -> () {
+        self.increment_by(Page(1))
+    }
+
+    #[instrument(skip(self))]
+    pub fn increment_by(&mut self, by: Page) -> () {
         match self {
             PageLock::Unlocked(pg) => {
-                pg.next();
-                let _ = self.enter_increment_span(Page(1));
-                Some(())
+                *pg = *pg + by;
             }
-            PageLock::Locked(_) => None,
+            PageLock::Locked(pg) => panic!(
+                "Attempted to advance a locked page cursor past page {}! (use try_increment_by when standing still is intended)",
+                pg
+            ),
         }
     }
 
-    fn enter_increment_span(&self, incrementing_by: Page) -> EnteredSpan {
-        debug_span!(
-            "increment_current_page",
-            from_page = %self.get(),
-            to_page = %(*self.get() + incrementing_by)
-        )
-        .entered()
-    }
-
-    pub fn increment_by(&mut self, by: Page) -> Option<()> {
+    pub fn try_increment_by(&mut self, by: Page) -> Option<()> {
         match self {
-            PageLock::Unlocked(keeper) => {
-                *keeper = *keeper + by;
-                let _ = self.enter_increment_span(by);
+            PageLock::Unlocked(_) => {
+                self.increment_by(by);
                 Some(())
             }
-            PageLock::Locked(_) => None,
+            PageLock::Locked(pg) => {
+                tracing::trace!(page = %pg, "skipped increment of locked page cursor");
+                None
+            }
         }
     }
 
@@ -61,5 +60,47 @@ impl PageLock {
             PageLock::Unlocked(page) => page,
             PageLock::Locked(page) => page,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PageLock;
+    use crate::page::Page;
+
+    #[test]
+    fn unlocked_increments() {
+        let mut lock = PageLock::Unlocked(Page(4));
+        lock.increment();
+        assert_eq!(*lock.get(), Page(5));
+
+        lock.increment_by(Page(3));
+        assert_eq!(*lock.get(), Page(8));
+    }
+
+    #[test]
+    #[should_panic(expected = "locked page cursor")]
+    fn locked_increment_panics() {
+        let mut lock = PageLock::Unlocked(Page(4)).lock();
+        lock.increment();
+    }
+
+    #[test]
+    fn try_increment_noops_when_locked() {
+        let mut lock = PageLock::Unlocked(Page(4)).lock();
+        assert!(lock.try_increment_by(Page(1)).is_none());
+        assert_eq!(*lock.get(), Page(4));
+
+        let mut lock = lock.unlock();
+        assert!(lock.try_increment_by(Page(1)).is_some());
+        assert_eq!(*lock.get(), Page(5));
+    }
+
+    #[test]
+    fn lock_round_trip_preserves_page() {
+        let lock = PageLock::Unlocked(Page(7)).lock();
+        assert_eq!(*lock.get(), Page(7));
+        let lock = lock.unlock();
+        assert_eq!(*lock.get(), Page(7));
     }
 }
