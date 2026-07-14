@@ -56,9 +56,9 @@ impl ClassifierState {
 
     pub fn current_page(&self) -> Page {
         match self {
-            ClassifierState::Committed(c) => c.current_page,
-            ClassifierState::Deferral(c) => c.current_page,
-            ClassifierState::OverrideStream(c) => c.base.current_page,
+            ClassifierState::Committed(c) => c.current_page(),
+            ClassifierState::Deferral(c) => c.current_page(),
+            ClassifierState::OverrideStream(c) => c.base.current_page(),
             ClassifierState::Transition => unreachable!(
                 "shouldn't attempt to access inner committed classifier while transitioning"
             ),
@@ -114,14 +114,14 @@ impl Classifier {
         }
     }
 
-    #[instrument(skip_all, fields(page = %classifier.current_page))]
+    #[instrument(skip_all, fields(page = %classifier.current_page()))]
     fn schedule_deferral(&mut self, mut classifier: CommittedClassifier) -> () {
         while let Some(_) = classifier.poll() {}
 
         self.state = ClassifierState::Deferral(DeferralClassifier::new(classifier));
     }
 
-    #[instrument(skip_all, fields(page = %classifier.current_page))]
+    #[instrument(skip_all, fields(page = %classifier.current_page()))]
     fn schedule_override_stream(
         &mut self,
         mut classifier: CommittedClassifier,
@@ -147,11 +147,10 @@ impl Classifier {
         self.state = ClassifierState::Committed(classifier.till_stream_end()?);
 
         let end_page = self.state.current_page();
-        let end_class = self.state.committed().ctx.get_decision(end_page);
-
-        tracing::Span::current()
-            .record("ended_on_page", end_page.0)
-            .record("ended_on_class", &format_args!("{:?}", end_class));
+        let committed = self.state.committed();
+        if let Some(end_class) = committed.ctx.get_decision(end_page) {
+            committed.decide_and_classify_as(*end_class, end_page)?;
+        };
 
         Ok(())
     }
@@ -174,7 +173,7 @@ impl Classifier {
             match state {
                 ClassifierState::Committed(mut classifier) => {
                     ignore_state_change_if!(
-                        classifier.current_page == classifier.ctx.start_page,
+                        classifier.current_page() == classifier.ctx.start_page,
                         "ignoring state change since first page",
                         classifier,
                         self.state

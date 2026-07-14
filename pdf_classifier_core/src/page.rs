@@ -27,6 +27,12 @@ impl From<usize> for Page {
     }
 }
 
+impl From<u32> for Page {
+    fn from(value: u32) -> Self {
+        Self(value)
+    }
+}
+
 impl Sub for Page {
     type Output = Page;
 

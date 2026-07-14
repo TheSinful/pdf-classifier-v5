@@ -9,28 +9,28 @@ use crate::{
     },
     obj_list::KnownObjectList,
     page::Page,
+    page_lock::PageLock,
     threading::pool::JobResult,
 };
 
 #[derive(Debug)]
 pub struct DeferralClassifier {
     pub base: CommittedClassifier,
-    pub current_page: Page,
+    page_lock: PageLock,
     start_page: Page,
     end_page: Option<Page>,
     current_independent: KnownObject,
     independents: Vec<KnownObject>,
-    original_no_increment: bool,
 }
 
 impl DeferralClassifier {
-    pub fn new(base: CommittedClassifier) -> Self {
+    pub fn new(mut base: CommittedClassifier) -> Self {
         let mut independents = get_global_independents();
+        base.page_lock = base.page_lock.lock();
 
         Self {
-            start_page: base.current_page,
-            current_page: base.current_page,
-            original_no_increment: base.no_increment,
+            start_page: base.current_page(),
+            page_lock: base.page_lock.clone(),
             base,
             current_independent: independents
                 .pop()
@@ -40,10 +40,12 @@ impl DeferralClassifier {
         }
     }
 
-    #[instrument(name = "enter_deferral", skip_all, fields(page = %self.current_page, available_workers = self.base.thread_pool.available_workers_count()))]
-    pub fn find_next_independent(mut self) -> Result<CommittedClassifier, ClassificationError> {
-        self.base.no_increment = true;
+    pub fn current_page(&self) -> Page {
+        *self.page_lock.get()
+    }
 
+    #[instrument(name = "enter_deferral", skip_all, fields(page = %self.current_page(), available_workers = self.base.thread_pool.available_workers_count()))]
+    pub fn find_next_independent(mut self) -> Result<CommittedClassifier, ClassificationError> {
         loop {
             if self.base.thread_pool.available_workers_count() > 0 {
                 self.spawn_worker();
@@ -86,10 +88,8 @@ impl DeferralClassifier {
         while let Some(_) = self.base.poll() {}
 
         self.base.should_defer = false;
-        self.base.no_increment = self.original_no_increment;
-        self.base.current_page = self.get_end_page();
-        self.base.current_page.next();
-
+        self.base.page_lock = PageLock::Unlocked(self.get_end_page());
+        self.base.page_lock.increment();
         Ok(self.base)
     }
 
@@ -172,7 +172,7 @@ impl DeferralClassifier {
         }
     }
 
-    #[instrument(name = "deferral_fill_range", skip_all, fields(from_page = %self.start_page, to_page = ?self.end_page, range = self.current_page.0 - self.get_end_page().0))]
+    #[instrument(name = "deferral_fill_range", skip_all, fields(from_page = %self.start_page, to_page = ?self.end_page, range = self.current_page().0 - self.get_end_page().0))]
     fn fill_range(&self) -> Vec<Page> {
         (self.start_page.0..self.get_end_page().0)
             .map(|num| Page(num))
@@ -184,13 +184,13 @@ impl DeferralClassifier {
         self.base.ctx.guarantee_failure_of(as_class, on_page);
     }
 
-    #[instrument(name = "check_independent", skip(self), fields(page = %self.current_page, independent = %self.current_independent))]
+    #[instrument(name = "check_independent", skip(self), fields(page = %self.current_page(), independent = %self.current_independent))]
     fn spawn_worker(&mut self) -> () {
         self.base
             .thread_pool
-            .classify_unchecked(self.current_independent, self.current_page);
+            .classify_unchecked(self.current_independent, self.current_page());
 
-        self.current_page.next();
+        self.page_lock.increment();
 
         if self.independents.is_empty() {
             self.independents = get_global_independents();
