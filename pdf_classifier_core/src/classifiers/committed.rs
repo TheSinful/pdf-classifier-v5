@@ -64,7 +64,6 @@ impl CommittedClassifier {
             thread_pool,
             ctx: context,
             should_defer: false,
-            // no_increment: false,
             streamer: None,
         }
     }
