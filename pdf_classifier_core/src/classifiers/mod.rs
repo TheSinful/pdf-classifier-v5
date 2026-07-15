@@ -31,7 +31,10 @@ pub enum ClassificationError {
     ContextRecordError(#[from] ContextError),
 
     #[error(transparent)]
-    LoggerInitializationError(#[from] tracing_subscriber::util::TryInitError),
+    LoggerInitializationError(#[from] tracing_subscriber::util::TryInitError), 
+
+    #[error("Attempted to increment page count while page lock was locked.")]
+    PageLockLocked
 }
 
 #[derive(Debug)]
@@ -146,11 +149,11 @@ impl Classifier {
     ) -> Result<(), ClassificationError> {
         self.state = ClassifierState::Committed(classifier.till_stream_end()?);
 
-        let end_page = self.state.current_page();
-        let committed = self.state.committed();
-        if let Some(end_class) = committed.ctx.get_decision(end_page) {
-            committed.decide_and_classify_as(*end_class, end_page)?;
-        };
+        // let end_page = self.state.current_page();
+        // let committed = self.state.committed();
+        // if let Some(end_class) = committed.ctx.get_decision(end_page) {
+        //     committed.decide_and_classify_as(*end_class, end_page)?;
+        // };
 
         Ok(())
     }
