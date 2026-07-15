@@ -29,7 +29,7 @@ impl DeferralClassifier {
 
         Self {
             start_page: base.current_page(),
-            page_lock: base.page_lock.clone(),
+            page_lock: base.page_lock.clone().unlock(),
             base,
             current_independent: independents
                 .pop()
@@ -76,6 +76,7 @@ impl DeferralClassifier {
         on_page: Page,
         as_class: KnownObject,
     ) -> Result<CommittedClassifier, ClassificationError> {
+        self.base.page_lock = PageLock::Unlocked(on_page);
         self.base.try_decide_as(as_class, on_page).unwrap(); // no error possible
 
         self.end_page = Some(on_page);
@@ -85,7 +86,6 @@ impl DeferralClassifier {
         while let Some(_) = self.base.poll() {}
 
         self.base.should_defer = false;
-        self.base.page_lock = PageLock::Unlocked(self.get_end_page());
         self.base.page_lock.increment();
         Ok(self.base)
     }
