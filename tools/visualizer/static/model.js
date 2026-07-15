@@ -282,6 +282,7 @@
             walk(ch);
             break;
           }
+          case "try_decide_as":
           case "decide_as": {
             const page = pageNum(f.page);
             const cls = className(f.class);
