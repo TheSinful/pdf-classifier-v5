@@ -122,9 +122,11 @@ impl CommittedClassifier {
         page: Page,
     ) -> Result<(), ClassificationError> {
         self.ctx.decide(page, class);
-        self.page_lock.try_increment_by(STEP_COUNT.into());
-
-        Ok(())
+        if let Some(_) = self.page_lock.try_increment_by(STEP_COUNT.into()) {
+            Ok(())
+        } else { 
+            Err(ClassificationError::PageLockLocked)
+        }
     }
 
     #[instrument(skip(self))]
