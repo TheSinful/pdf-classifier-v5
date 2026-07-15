@@ -19,19 +19,11 @@ pub struct Context {
     pub guarantee_failures: ClassifierResultMap,
 }
 
-#[derive(Debug)]
-pub enum ContextUpdate {
-    Decision(Page, KnownObject),
-    NewParent(KnownObject),
-}
-
 #[derive(thiserror::Error, Debug)]
 pub enum ContextError {
     #[error(transparent)]
     ClassOutOfBounds(#[from] ObjectCastError),
 }
-
-pub type ContextUpdateHistory = Vec<ContextUpdate>;
 
 impl Context {
     pub fn new(start_page: Page, end_page: Page) -> Self {
@@ -81,43 +73,28 @@ impl Context {
         self.pages.get(&page)
     }
 
-    fn update_current_parent(
-        &mut self,
-        page: Page,
-        class: KnownObject,
-        difference_history: &mut ContextUpdateHistory,
-    ) -> () {
+    fn update_current_parent(&mut self, page: Page, class: KnownObject) -> () {
         tracing::debug!("current parent updated to {}", class.to_string());
         self.prev_parents.insert_in_page(page, self.current_parent);
         self.current_parent = class;
-        difference_history.push(ContextUpdate::NewParent(class));
     }
 
-    pub fn decide(
-        &mut self,
-        page: Page,
-        class: KnownObject,
-        difference_history: &mut ContextUpdateHistory,
-    ) -> Result<(), ContextError> {
+    pub fn decide(&mut self, page: Page, class: KnownObject) -> () {
         self.pages.insert(page, class);
 
-        difference_history.push(ContextUpdate::Decision(page, class));
-
         if self.is_first_page(page) {
-            return Ok(());
+            return;
         }
 
         if !is_independent(class) {
-            return Ok(());
+            return;
         }
 
         // todo: need fallback to ensure that if on this decision we're incorrect, that we can revert correctly.
         let current_discrim: u8 = class.into();
         let parent_discrim: u8 = self.current_parent.into();
         if current_discrim != parent_discrim {
-            self.update_current_parent(page, class, difference_history);
+            self.update_current_parent(page, class);
         }
-
-        return Ok(());
     }
 }

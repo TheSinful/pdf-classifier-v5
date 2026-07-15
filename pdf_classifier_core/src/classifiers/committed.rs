@@ -3,7 +3,6 @@ use super::STEP_COUNT;
 use crate::classifiers::ovstr::StreamPtr;
 use crate::constraints::overrides::OverrideAction;
 use crate::context::Context;
-use crate::context::ContextUpdateHistory;
 use crate::ffi::UserResult;
 use crate::generated::generated_object_types::KnownObject;
 use crate::generated::generated_object_types::KnownObject::UNKNOWN;
@@ -81,62 +80,57 @@ impl CommittedClassifier {
     }
 
     pub fn step_inner(&mut self) -> Result<(), ClassificationError> {
-        let history = ContextUpdateHistory::new();
         let current_page = self.current_page();
         let winner = self
             .inferencer
             .infer(&mut self.ctx, current_page, &KnownObjectList::new())?;
 
         if winner == KnownObject::UNKNOWN {
-            return self.decide_as(KnownObject::UNKNOWN, history, self.current_page());
+            return self.try_decide_as(KnownObject::UNKNOWN, self.current_page());
         }
 
         if let Some(action) = self._override(winner) {
-            return self.handle_override(action, history);
+            return self.handle_override(action);
         }
 
         self.thread_pool.classify(winner, self.current_page());
-        self.decide_as(winner, history, self.current_page())
+        self.try_decide_as(winner, self.current_page())
     }
 
-    #[instrument(skip(self, history))]
+    #[instrument(skip(self))]
     pub fn handle_override(
         &mut self,
         override_result: OverrideAction,
-        history: ContextUpdateHistory,
     ) -> Result<(), ClassificationError> {
         match override_result {
-            OverrideAction::Skip => {
-                self.decide_as(KnownObject::UNKNOWN, history, self.current_page())
-            }
+            OverrideAction::Skip => self.try_decide_as(KnownObject::UNKNOWN, self.current_page()),
             OverrideAction::InferAs(class) => {
                 self.thread_pool.classify(class, self.current_page());
-                self.decide_as(class, history, self.current_page())
+                self.try_decide_as(class, self.current_page())
             }
             OverrideAction::ClassifyAs(class) => {
                 self.thread_pool.extract(class, self.current_page());
-                self.decide_as(class, history, self.current_page())
+                self.try_decide_as(class, self.current_page())
             }
         }
     }
 
-    #[instrument(skip(self, history))]
-    pub fn decide_as(
+    #[instrument(skip(self))]
+    pub fn try_decide_as(
         &mut self,
         class: KnownObject,
-        mut history: ContextUpdateHistory,
         page: Page,
     ) -> Result<(), ClassificationError> {
-        self.ctx.decide(page, class, &mut history)?;
-        self.increment_current_page(STEP_COUNT.into());
+        self.ctx.decide(page, class);
+        self.page_lock.try_increment_by(STEP_COUNT.into());
 
         Ok(())
     }
 
-    fn increment_current_page(&mut self, by: Page) -> () {
-        // intentionally a no-op while deferral holds the lock: backfill
-        // decisions must not advance the committed cursor
-        let _ = self.page_lock.try_increment_by(by);
+    #[instrument(skip(self))]
+    pub fn decide_as(&mut self, class: KnownObject, page: Page) -> () {
+        self.ctx.decide(page, class);
+        self.page_lock.increment_by(STEP_COUNT.into());
     }
 
     #[instrument(skip(self))]
@@ -145,7 +139,7 @@ impl CommittedClassifier {
         class: KnownObject,
         page: Page,
     ) -> Result<(), ClassificationError> {
-        self.decide_as(class, ContextUpdateHistory::new(), page)?;
+        self.try_decide_as(class, page)?;
 
         self.thread_pool.classify(class, page);
 

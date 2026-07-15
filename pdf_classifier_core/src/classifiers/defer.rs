@@ -2,7 +2,6 @@ use tracing::instrument;
 
 use super::{ClassificationError, committed::CommittedClassifier};
 use crate::{
-    context::ContextUpdateHistory,
     generated::{
         generated_object_types::KnownObject,
         reflected_objects::{get_all_dependents, get_global_independents},
@@ -77,9 +76,7 @@ impl DeferralClassifier {
         on_page: Page,
         as_class: KnownObject,
     ) -> Result<CommittedClassifier, ClassificationError> {
-        self.base
-            .decide_as(as_class, ContextUpdateHistory::new(), on_page)
-            .unwrap(); // no error possible
+        self.base.try_decide_as(as_class, on_page).unwrap(); // no error possible
 
         self.end_page = Some(on_page);
 

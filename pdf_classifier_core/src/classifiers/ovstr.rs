@@ -57,7 +57,7 @@ impl OverrideStreamClassifier {
                 self.base.current_page()
             );
             let step = stream.step(&self.base.ctx, self.base.current_page());
-            self.base.handle_override(step, history)?;
+            self.base.handle_override(step)?;
 
             let exit_case = Self::should_break_from_exit_case(
                 &self.base.ctx,
