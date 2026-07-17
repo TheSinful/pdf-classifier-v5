@@ -1,465 +1,475 @@
-﻿# PDF Classifier v5 - AI Agent Instructions
+# PDF Classifier v5 — AI Agent Instructions
 
 ## What This Is
 
-A **constraint-based, sequential inference engine** for structured documents that separates cheap speculative inference from expensive validation. This is not a generic PDF parser or an AI/ML system — it's a **formal constraint satisfaction system** for sequence labeling under structural rules.
+A **constraint-based, speculative sequence-labeling engine** for structured
+documents. It walks a linear stream of PDF pages and assigns each a type from a
+finite, user-defined set (in the reference project: `chapter`, `subchapter`,
+`diagram`, `datatable`), while:
 
-### The Core Problem
+- obeying global document-structure constraints (hierarchy, pairing, ordering),
+- making cheap guesses first and validating expensive ground truth sparingly,
+- recovering *linearly* from wrong early guesses instead of backtracking,
+- staying fast, safe, and fully explainable.
 
-Processing a linear stream of pages, assigning each a type from a finite set (chapter, subchapter, diagram, datatable), while:
+This is **parsing / constraint satisfaction / sequence labeling**, not machine
+learning. There is no model, no training, no inference weights learned from
+data. "Inference" here means *constraint-driven deduction*, and the scoring
+model is a fixed linear tally. Keep that framing — it is the single most
+important thing to understand before touching anything.
 
-- Obeying global document structure constraints
-- Recovering from incorrect early predictions
-- Remaining fast, safe, and explainable
-- Using expensive ground-truth validation (PDF classification) sparingly
+### The Core Problem It Solves
 
-This is closer to **parsing**, **constraint satisfaction**, and **sequence labeling** than to neural networks.
+Ground-truth classification of a page is **expensive** (it calls user C++ that
+pokes at MuPDF). Doing it for every candidate type on every page would be
+prohibitive. So the engine *guesses* each page's type from context + structural
+constraints (cheap, main-thread, reversible), and only fires the expensive
+`classify()` call to confirm the single most likely guess — in parallel, off
+the main thread. Most guesses are right. When a guess is wrong, the wrong guess
+has poisoned the running structural context, so the engine enters a **deferral**
+recovery mode that scans forward to the next safe structural anchor and
+backfills the gap structurally. This is linear-time recovery: no exponential
+backtracking, no per-page context snapshots.
+
+See [`docs/context.md`](../docs/context.md) for the original design rationale on
+why context reversion (snapshot-and-rollback) was rejected in favor of
+forward-anchoring deferral.
 
 ## Repository Layout
 
-The project is a **Rust workspace** with multiple crates plus a Python build package:
+A **Rust workspace** (multiple crates) plus a **Python build package** and a
+**C++ FFI layer**:
 
 ```
-pdf_classifier_core/    — Main Rust crate: inference engine, state machine, FFI bridge
-pdf_classifier_macros/  — Rust proc-macro crate: constraint enum generation
-pdf_classifier_ffi/     — C++ FFI layer: ffi.cpp + ffi.hpp (MuPDF glue)
-pdf_classifier_build/   — Python package (pdf_classifier): schema compiler & build orchestrator
-examples/               — Reference user project (chapter/subchapter/diagram/datatable)
-  main.py               — Entry point for running the Python builder
-  build/                — CMake + generated headers output directory (default CLASSIFIER_BUILD_DIR)
-docs/                   — Developer design notes (informal, not API docs)
+pdf_classifier_core/    Main Rust crate: state machine, inference, constraint
+                        pipeline, thread pool, FFI bridge, streaming
+pdf_classifier_macros/  Proc-macro crate: constraint-enum generation
+pdf_classifier_ffi/     C++ FFI layer: ffi.cpp + ffi.hpp (MuPDF glue)
+pdf_classifier_build/   Python package `pdf_classifier`: schema compiler +
+                        build orchestrator + result stream frontend
+examples/               Reference user project (chapter/subchapter/diagram/
+                        datatable); main.py is the end-to-end entry point
+tools/visualizer/       Diagnostic web UI that replays a run from its trace log
+docs/                   Informal design notes (not API docs)
+data/                   Test PDF + static-classifier "ground truth" export
 ```
 
-**Build order** (CRITICAL — do not reverse):
-```bash
-# Step 1: Python builder — generates C++ headers AND Rust generated/ files
-cd examples
-python main.py
+## Build & Run Pipeline (Python-Orchestrated)
 
-# Step 2: Cargo — links against artifacts from step 1
-cd ..
-cargo build
-```
+The Python `Builder` is the front-end that compiles a schema into static
+artifacts for **both** C++ and Rust, drives the native builds, then launches
+and streams from the classifier. A run of [`examples/main.py`](../examples/main.py)
+does the whole thing:
 
-`build.rs` reads `CLASSIFIER_BUILD_DIR` env var (default: `../examples/build`) to find MuPDF libs and generated headers.
+1. Define the schema via `ObjectFactory` (objects, hierarchy, pairing, overrides).
+2. `Builder(...).override(...).build()` →
+   - builds MuPDF (CMake),
+   - generates **Rust** files into `pdf_classifier_core/src/generated/`,
+   - generates **C++** headers into `<build_dir>/include/shared/`,
+   - validates user C++ function signatures, generates the dispatch func-maps,
+   - builds the user C++ project and the Rust core (`cargo build`),
+   - returns a `Stream` (a TCP server acting as the result frontend).
+3. `await build.spawn_classifier(start, end, threads, doc, verbose)` launches
+   `target/debug/pdf_classifier_core.exe` as a subprocess.
+4. `async for result in stream.stream_extraction_results()` consumes the
+   extraction payloads the running classifier streams back over TCP.
 
-## Core Architecture: Separation of Responsibilities
+`pdf_classifier_core/build.rs` reads the `CLASSIFIER_BUILD_DIR` env var
+(default `../examples/build`) to locate MuPDF libs and generated headers, then
+uses `cxx-build` to compile `pdf_classifier_ffi/ffi.cpp` and link
+`libmupdf` + the generated bindings.
 
-### Three-Layer System
-
-The classifier separates concerns into three distinct layers that **must not** be collapsed:
-
-**(A) Inference Layer (cheap, speculative)**
-
-- Runs sequentially on main thread
-- Makes guesses about page types based on context + constraints
-- Scores candidate types through a four-tier constraint pipeline
-- Must be fast (<1ms per page) and reversible
-- Can be wrong — that is intentional
-- Lives in: `pdf_classifier_core/src/classifier/`, `pdf_classifier_core/src/inferencer.rs`, `pdf_classifier_core/src/constraints/`
-
-**(B) Classification/Extraction Layer (expensive, authoritative)**
-
-- Validates an inference guess by calling user-defined C++ functions via FFI
-- Returns `UserResult<Shared>` (classify) or `UserResult<()>` (extract)
-- Can fail (returns `UserResult::Fail`)
-- Runs off-thread via `WorkerThread` + tokio async channels
-- Produces ground truth that corrects inference
-- Lives in: `pdf_classifier_ffi/`, user code in `examples/*.cpp`
-
-**(C) Context Layer (memory, state tracking)**
-
-- Holds structural state: `current_parent`, `pages` map, `prev_parents`, `guarantee_failures`
-- Does NOT decide — it only informs inference
-- `guarantee_failures`: records classes known to fail on specific pages (fed back from deferral)
-- Lives in: `pdf_classifier_core/src/context.rs`
-
-**Critical Insight**: This separation enables deferred blocks, parallel validation, and graceful degradation when early guesses are wrong.
+**Ordering matters**: the Rust `generated/` files and C++ headers must exist
+before `cargo build`. Running `python examples/main.py` regenerates them; a bare
+`cargo build` against a fresh checkout will fail on missing `generated/` modules.
 
 ## Why Three Languages (Orthogonal Constraints)
 
-**Python (`pdf_classifier_build/`)** — Schema Compiler & Build Orchestrator
+Each language is present because of a hard constraint, not preference. Do not
+collapse layers.
 
-- **Responsibility**: Schema definition via `ObjectFactory` DSL, code generation (C++ headers + Rust generated files), build coordination
-- **Why Python**: Need reflection and dynamic object graphs for user-facing DSL
-- **Not Used For**: Runtime classification (happens entirely in Rust/C++)
-- **Key Insight**: Python is the "front-end" that compiles schemas into static artifacts for both C++ and Rust
+- **Python** (`pdf_classifier_build/`) — schema reflection + build
+  orchestration + result frontend. Chosen for dynamic object graphs and
+  reflection to power the user-facing DSL. Runs **zero** runtime classification.
+- **C++** (`pdf_classifier_ffi/` + user `examples/*.cpp`) — MuPDF access &
+  execution. MuPDF is C-native and its contexts are **thread-affine**; C++ gives
+  a predictable ABI. It is a controlled execution environment, not an orchestrator.
+- **Rust** (`pdf_classifier_core/`) — the engine: state machine, constraint
+  pipeline, safe parallel scheduling (tokio + OS threads), context/state.
+  It treats PDF internals as opaque and delegates them to C++.
 
-**C++ (`pdf_classifier_ffi/`)** — PDF Access & Execution Layer
+## Runtime Architecture: Three Layers
 
-- **Responsibility**: MuPDF integration, dispatching classify/extract calls via generated function maps
-- **Why C++**: MuPDF is C-native; page contexts are thread-affine; need predictable ABI
-- **Not Used For**: Orchestration, parallelism, or state management
-- **Key Insight**: C++ is a controlled execution environment, not the engine
+These are conceptual responsibilities that **must not** be merged:
 
-**Rust (`pdf_classifier_core/`)** — Classification Engine & Orchestrator
+**(A) Inference layer — cheap, speculative, main-thread.**
+Guesses a page's type from context + constraints via the four-tier pipeline.
+Fast, reversible, allowed to be wrong. Lives in
+[`inferencer.rs`](../pdf_classifier_core/src/inferencer.rs),
+[`obj_list.rs`](../pdf_classifier_core/src/obj_list.rs),
+[`constraints/`](../pdf_classifier_core/src/constraints/).
 
-- **Responsibility**: Parallel scheduling (tokio + threads), state machine, constraint pipeline, context
-- **Why Rust**: Safe parallelism, deterministic ownership, scheduler-heavy workloads
-- **Not Used For**: Understanding PDF internals (delegates to C++)
-- **Key Insight**: Rust is the "brains" that orchestrates classification across threads
+**(B) Classification/extraction layer — expensive, authoritative, off-thread.**
+Validates a guess by calling user C++ over FFI. `classify()` returns
+`UserResult<Shared>` (ground truth + a payload); a successful classify
+auto-queues `extract()`, which returns `UserResult<CxxString>` (a JSON payload).
+Runs on `WorkerThread`s via tokio channels. Lives in
+[`threading/`](../pdf_classifier_core/src/threading/),
+[`ffi.rs`](../pdf_classifier_core/src/ffi.rs), and user `examples/*.cpp`.
 
-### Responsibility Boundaries
+**(C) Context layer — memory / structural state.**
+Holds `current_parent`, the decided `pages` map, `prev_parents`, and
+`guarantee_failures`. It **informs** inference; it never decides. Lives in
+[`context.rs`](../pdf_classifier_core/src/context.rs).
+
+## The Four-Tier Constraint Pipeline
+
+`Inferencer::infer(ctx, page, candidates)` filters a candidate list through an
+ordered pipeline (see [`obj_list.rs`](../pdf_classifier_core/src/obj_list.rs)):
 
 ```
-+-------------------------------------------------------------+
-| Python: Schema Definition & Compilation                     |
-| * User defines hierarchy via ObjectFactory DSL              |
-| * Generates C++ headers (shared/) + Rust generated/ files   |
-| * Freezes schema at compile time                            |
-+----------------+--------------------------------------------+
-                 | (build artifacts)
-+----------------v--------------------------------------------+
-| C++: PDF Execution Layer (no orchestration)                 |
-| * MuPDF context ownership (thread-local)                    |
-| * Generated func_map.h for classify/extract dispatch        |
-| * OpaqueCtx/OpaqueDoc/SharedData/OpaqueResult wrappers      |
-+----------------+--------------------------------------------+
-                 | (cxx FFI bridge in ffi.rs)
-+----------------v--------------------------------------------+
-| Rust: Classification Orchestrator                           |
-| * WorkerThread pool (tokio mpsc + OS threads)               |
-| * CommittedClassifier / DeferralClassifier state machine    |
-| * Four-tier constraint pipeline                             |
-| * Treats SharedData as opaque (passes through untouched)    |
-+-------------------------------------------------------------+
+Tier 1  filter_by_definitive_constraints  → if one fires, it IS the answer; stop
+Tier 2  filter_by_hard_constraints        → eliminate structurally impossible
+Tier 3  sort_by_soft_constraints          → score & rank survivors; top wins
+Tier 4  overrides                          → applied AFTER, by CommittedClassifier
 ```
+
+- **Tier 1 — Definitive** (`constraints/definitive/`): invariants, return
+  `bool`. A hit ends inference for that page. Examples: `FirstPageRoot` (first
+  page is the root class), `SecondInPair` (page after a first-in-pair *is*
+  second-in-pair). Trait: `fn eval(ctx, class, page) -> bool`.
+- **Tier 2 — Hard** (`constraints/hard/`): filters, return `bool`; `false`
+  permanently removes a candidate for this page. Example:
+  `IllegalSecondInPair`. Same trait signature as Tier 1.
+- **Tier 3 — Soft** (`constraints/soft/`): rankers, return a `Score`
+  (`REWARD_Heavy` 1.0 … `PUNISHMENT_Heavy` -1.0, or `Custom(f32)`). Candidate
+  with the highest summed score wins. Budget is intentionally ~1.2–1.5 to leave
+  room for future constraints. Examples: `REWARD_IsNaturalChild`,
+  `REWARD_FirstInPair`. Trait: `fn eval(ctx, class, page) -> Score`.
+- **Tier 4 — Overrides**: applied by
+  `CommittedClassifier::_override()` after a winner is chosen. Two abstractions
+  (see below).
+
+**Do not mix tiers**: no scoring in hard constraints, no filtering in soft ones.
+
+Tiers 1–3 dispatch through `impl_constraint_enum!` (a proc macro in
+`pdf_classifier_macros`) which generates a matching enum with direct dispatch —
+no vtables, no allocation, full inlining.
+
+### Tier 4 — Overrides (two kinds)
+
+Both are generated by Python into
+[`generated/overrides.rs`](../pdf_classifier_core/src/generated/overrides.rs).
+
+**`Override`** — single-page, stateless. `fn eval(&self, ctx, class, page) ->
+Option<OverrideAction>`. Registered in the `OVERRIDES` array. The only
+implemented one is `BlankAfter { config }`: the page after a page decided as
+`config` is forced to `UNKNOWN` (a known blank/record-of-mods page).
+
+**`OverrideStream`** — multi-page, **stateful**, fully implemented. It bypasses
+hierarchy inference across a recognized structural run. Trait:
+```rust
+fn step(&mut self, ctx, page) -> OverrideAction;
+fn should_enter(&self, ctx, page) -> bool;
+fn should_exit(&self, ctx, page) -> OverrideStreamExitCase;
+```
+Registered in the `OVERRIDE_STREAMS` array (a `LazyLock<[Mutex<Box<dyn
+OverrideStream>>; N]>`, since streams hold mutable state). The implemented one
+is `MultiPageHierarchyBreak`: after `chapter`, alternate `diagram`/`datatable`
+until a page classifies as `subchapter`, then hand back to committed inference.
+This avoids entering deferral for a known-shaped region. It is driven by a
+dedicated classifier state (see below).
+
+**`OverrideAction`** variants:
+- `Skip` → record `UNKNOWN`, no classify call.
+- `InferAs(class)` → override the winner; a classify call still validates it.
+- `ClassifyAs(class)` → skip classify, go straight to extract. **Currently
+  unused.** Nothing emits it today; wiring extract without a preceding classify
+  needs care (extraction depends on the `Shared` payload a classify produces).
+
+## Structural Knowledge as Lookup Tables
+
+Schema relationships are compiled into `O(1)` adjacency matrices at build time
+in [`generated/reflected_objects.rs`](../pdf_classifier_core/src/generated/reflected_objects.rs):
+
+```rust
+pub const VALID_CHILDREN: TableMatrix   // can Y be a child of X?
+pub const VALID_PARENTS:  TableMatrix   // can X be a parent of Y?
+pub const VALID_PAIRS:    TableMatrix   // do X and Y form a pair?
+pub const INDEPENDENTS: [bool; OBJECT_COUNT]  // is X organizational?
+```
+
+Helper fns: `is_child`, `is_parent`, `is_pair`, `is_root`, `is_independent`,
+`get_global_independents`, `has_dependents`, `get_all_dependents`. These replace
+recursive tree walks with constant-time matrix lookups. The `OBJECTS` constant
+is the root node **tree** (in the reference schema a single-element array whose
+one node is `CHAPTER`); do not confuse `OBJECTS` indexing with `KnownObject`
+discriminants (where `UNKNOWN` is 0).
+
+### Independent vs Dependent Objects
+
+- **Independent** (organizational, `is_independent() == true`): e.g. `chapter`,
+  `subchapter`. Safe structural anchors — meaningful without prior context, can
+  re-anchor `current_parent`, and terminate deferral/override-stream regions.
+- **Dependent** (`is_independent() == false`): e.g. `diagram`, `datatable`.
+  Only meaningful relative to a parent; unsafe to infer once context is poisoned.
+
+## Classifier State Machine
+
+[`classifiers/mod.rs`](../pdf_classifier_core/src/classifiers/mod.rs) drives a
+**three-state** machine (plus a `Transition` swap sentinel):
+
+```rust
+enum ClassifierState {
+    Committed(CommittedClassifier),        // normal sequential inference + classify
+    Deferral(DeferralClassifier),          // recovery: scan for the next anchor
+    OverrideStream(OverrideStreamClassifier), // stream a known structural run
+    Transition,                            // internal ownership-swap sentinel only
+}
+```
+
+`Classifier::run()` loops: it replaces `self.state` with `Transition` (to move
+ownership out), inspects the committed classifier's flags, and either steps in
+place, schedules a transition, or exits when the cursor reaches `end_page`.
+`DeferralClassifier` and `OverrideStreamClassifier` both wrap a
+`CommittedClassifier` as their `base`, so shared behavior lives in one place.
+
+### CommittedClassifier — normal operation
+
+Per [`step()`](../pdf_classifier_core/src/classifiers/committed.rs):
+1. `Inferencer::infer()` the current page.
+2. Consult `OVERRIDES` — may reroute via `handle_override`.
+3. Queue a `classify` job on the `ThreadPool`.
+4. `try_decide_as()` → record the decision in `Context` and advance the cursor.
+5. `poll()` the pool; a **failed** classify result sets `should_defer = true`.
+
+When `should_defer` is set, `run()` transitions to `DeferralClassifier`.
+(Note: deferral triggers on classify **failure**, not on a value mismatch — the
+engine only ever classifies its single top guess.)
+
+### DeferralClassifier — recovery
+
+Entered when a classify result contradicts the guess (context is now poisoned).
+Phase 1, `find_next_independent()`: scan forward, spawning `classify_unchecked`
+probes for the global independents; failed probes call
+`ctx.guarantee_failure_of(class, page)` so future inference skips that class on
+that page; the first successful probe is the **anchor**, and `finalize()` records
+it. Phase 2, `fill_in_dependents()`: backfill the deferred region
+`[start_page .. anchor_page)` with one of three strategies keyed on the anchor's
+dependents:
+- `fill_in_with_only_pair` — alternate the pair across the gap,
+- `fill_in_with_sole_class` — one dependent class fills everything,
+- `fill_in_by_standard_classification` — re-run inference restricted to the
+  anchor's dependents.
+
+Then it returns a `CommittedClassifier` resuming at the anchor.
+
+### OverrideStreamClassifier — streamed run
+
+Entered when `should_enter_override_stream()` matches. `till_stream_end()` loops
+calling the stream's `step()` (which decides + queues each page) and checking
+`should_exit`; on the exit class classifying successfully it records that page
+and hands control back to committed inference.
+
+## Page Cursor Discipline (`PageLock`)
+
+Page advancement is enforced by a type, not a loose integer or boolean flag —
+see [`page_lock.rs`](../pdf_classifier_core/src/page_lock.rs). This exists
+because historically the worst bugs came from advancing the cursor in the wrong
+place (double-advances, skips).
+
+```rust
+enum PageLock { Unlocked(Page), Locked(Page) }
+```
+
+- `increment()` / `increment_by(by)` — advance; **panic** on a `Locked` cursor.
+  Use where advancing is mandatory.
+- `try_increment_by(by)` — advance if unlocked; a **no-op** returning `None` if
+  locked. Use where standing still is legitimate.
+- `lock()` / `unlock()` — transition state, preserving the page.
+
+The two decision entry points on `CommittedClassifier` reflect this split:
+- `decide_as(class, page)` records and **must** advance (`increment_by`, panics
+  if locked).
+- `try_decide_as(class, page)` records and advances *if unlocked*; if locked it
+  returns `Err(ClassificationError::PageLockLocked)`.
+
+Deferral relies on this: it `lock()`s the base's cursor and keeps its own
+separate unlocked scan cursor, so backfill decisions record into `Context`
+without moving the committed cursor. When it finalizes, it unlocks the base at
+the anchor and advances once.
+
+## Worker Threads & Thread Pool
+
+Each `WorkerThread` ([`threading/mod.rs`](../pdf_classifier_core/src/threading/mod.rs))
+owns an OS thread with its **own** isolated MuPDF `fz_context` + document
+(thread-affine — MuPDF contexts cannot cross threads). Communication is via
+tokio mpsc channels (`CHANNEL_BUFFER_SIZE = 50`) carrying `WorkerJob::Classify`
+/ `WorkerJob::Extract`. Default per-context limit is 256 MiB
+(`STANDARD_CTX_MEM_LIMIT`).
+
+The `ThreadPool` ([`threading/pool.rs`](../pdf_classifier_core/src/threading/pool.rs))
+holds `FuturesUnordered` for classify and extract futures and is `poll()`ed
+cooperatively (via `noop_waker_ref`). Two behaviors to know:
+- A **successful classify auto-queues its extraction** — the classify's `Shared`
+  payload is stashed in `pending_extract_shared`, keyed by page.
+- Extraction is **worker-affine**: the `Shared` payload holds MuPDF objects tied
+  to the classifying worker's `fz_context`, so the extract job is dispatched
+  back to that same worker; if it is momentarily busy the job is re-queued.
+
+## FFI Boundary (Rust ↔ C++)
+
+The `cxx` bridge is in [`ffi.rs`](../pdf_classifier_core/src/ffi.rs). Never
+expose raw MuPDF types across the boundary — everything is an opaque wrapper:
+`OpaqueCtx` (`fz_context*`), `OpaqueDoc` (`fz_document*`), `SharedData` (the
+classify payload forwarded to extract), `OpaqueResult` (`Result*`).
+
+Result types:
+```rust
+pub type ClassificationResult = UserResult<Shared>;      // classify
+pub type ExtractionResult     = UserResult<CxxString>;   // extract (JSON string)
+
+pub enum UserResult<T> { Ok(OkUserResult<T>), Fail(FailUserResult) }
+```
+
+User C++ function signatures (validated by `UserFuncValidator`):
+- **Classify**: `Result* fn(uint32_t page, fz_context* ctx, fz_document* doc)`
+- **Extract**:  `Result* fn(uint32_t page, fz_context* ctx, fz_document* doc, void* shared)`
+
+`page` is always first; both return `Result*` (not `void*`).
+
+## Extraction Result Streaming (Rust → Python)
+
+Extraction output is fully wired end-to-end:
+`extract()` returns a JSON string → Rust `Streamer`
+([`stream.rs`](../pdf_classifier_core/src/stream.rs)) writes framed
+`(page, class, payload)` bytes over a TCP socket to `CLASSIFIER_OUTPUT_PORT` →
+Python's `Stream` ([`pdf_classifier_build/.../stream.py`](../pdf_classifier_build/src/pdf_classifier/stream.py))
+accepts the connection and yields `ExtractionResult`s from
+`stream_extraction_results()`. The binary **refuses to start** without
+`CLASSIFIER_OUTPUT_PORT` set, because a frontend is mandatory. `Streamer` is a
+plain struct with `send_data(page, class, &[u8])`.
 
 ## Python DSL: Defining Document Objects
 
-Objects represent **document-level abstractions** (not PDF primitives). Users define schemas via `ObjectFactory` with a **fluent builder pattern**. See [`examples/main.py`](examples/main.py):
+Objects are document-level abstractions, built with a fluent
+`ObjectFactory`. From [`examples/main.py`](../examples/main.py):
 
 ```python
-from pdf_classifier import Builder, ObjectFactory, BlankAfterClassOverride
-from pathlib import Path
-
-factory = ObjectFactory("test.hpp")  # shared header for generated user includes
+factory = ObjectFactory("test.hpp")  # shared header the user code implements
 
 factory.new().name("chapter").header("chapter.hpp") \
     .classify("classify_chapter").extract("extract_chapter") \
     .organizational().build()
-
 factory.new().name("subchapter").header("subchapter.hpp") \
     .classify("classify_subchapter").extract("extract_subchapter") \
     .child_of("chapter").organizational().build()
+factory.new().name("diagram").header("diagram.hpp") \
+    .classify("classify_diagram").extract("extract_diagram") \
+    .child_of("subchapter").pair_to("datatable", 1).build()   # 1 = first in pair
+factory.new().name("datatable").header("table.hpp") \
+    .classify("classify_datatable").extract("extract_datatable") \
+    .child_of("subchapter").pair_to("diagram", 2).build()     # 2 = second in pair
 
-factory.new().name("diagram") \
-    .classify("classify").extract("extract") \
-    .child_of("subchapter").pair_to("datatable", 1).build()   # pair order 1 = first in pair
-
-factory.new().name("datatable") \
-    .classify("classify").extract("extract") \
-    .child_of("subchapter").pair_to("diagram", 2).build()     # pair order 2 = second in pair
-
-build = Builder(Path("build"), factory, Path("CMakeLists.txt"))
-build.override(BlankAfterClassOverride("chapter")).build()
+build = Builder(examples_root / "build", factory, examples_root / "CMakeLists.txt")
+build.override(BlankAfterClassOverride("chapter"))
+build.override(MultiPageHierarchyBreakOverride("chapter", True, "subchapter",
+                                               ["diagram", "datatable"]))
+stream = build.build(skip_user_build=True)
 ```
 
-**Key Concepts**:
-
-- `ObjectFactory("test.hpp")` — shared test header that user code implements
-- `.organizational()` — marks an object as an **independent anchor** (chapter, subchapter); these can reset/re-anchor context and end defer blocks
-- `.pair_to(name, order)` — `order=1` is first in pair (diagram), `order=2` is second (datatable)
-- `.child_of(name)` — establishes parent-child structural relationship
-- The builder automatically injects an `UNKNOWN` object at discriminant 0 (not user-defined)
-
-**What `.organizational()` means in Rust**: Objects marked organizational become `true` in the generated `INDEPENDENTS` array, which drives `is_independent()` lookups used by deferral and constraint logic.
-
-## Python Builder Generated Artifacts
-
-The `Builder` generates artifacts in two locations — **do not edit manually**:
-
-### C++ headers -> `<build_dir>/include/shared/`
-
-1. **`generated_page_types.h`**: `enum KnownObject`, `page_type_to_string()`, `page_type_from_string()`
-2. **`func_map.h`**: `ClassifyFuncMap` and `ExtractFuncMap` (static `vector<Func>` for dispatch)
-
-### Rust files -> `pdf_classifier_core/src/generated/`
-
-1. **`generated_object_types.rs`**: `KnownObject` enum + `OBJECT_COUNT`, `has_children()`, `has_pair()`, `is_first_in_pair()`, `is_second_in_pair()`, `Display`, `TryFrom<u8>`
-2. **`reflected_objects.rs`**: `OBJECTS` node tree + `VALID_CHILDREN`/`VALID_PARENTS`/`VALID_PAIRS` adjacency matrices + `INDEPENDENTS` array + helper functions (`is_child`, `is_parent`, `is_pair`, `is_root`, `is_independent`, `get_global_independents`, `get_all_dependents`, etc.)
-3. **`overrides.rs`**: `OVERRIDES` constant array of `&'static dyn Override` instances
-
-## Constraint Pipeline (Four Tiers)
-
-The `Inferencer` processes each page through an **ordered four-tier pipeline**:
-
-```rust
-// In Inferencer::infer():
-candidates.filter_by_definitive_constraints(ctx, page)?  // Tier 1: Definitive — early exit
-candidates.filter_by_hard_constraints(ctx, page)?         // Tier 2: Hard — eliminate
-candidates.sort_by_soft_constraints(ctx, page)?           // Tier 3: Soft — score + rank
-// Tier 4: Overrides — applied by CommittedClassifier after the winner is chosen
-```
-
-### Tier 1 — Definitive Constraints
-
-**Purpose**: Conclusively determine the page type — if a definitive constraint fires, inference ends immediately for that page.
-
-**Return**: `bool` — if `true`, this class IS definitively the page type; skip remaining tiers.
-
-**Examples** (in `constraints/definitive/`):
-- `FirstPageRoot` — first page of the document is always the root object (e.g. chapter)
-- `SecondInPair` — if the previous page was first-in-pair, this page IS second-in-pair (datatable after diagram)
-
-Definitive constraints represent **invariants**, not heuristics.
-
-### Tier 2 — Hard Constraints
-
-**Purpose**: Eliminate structurally impossible candidates.
-
-**Return**: `bool` (PASS/FAIL) — `false` removes the class from consideration permanently for this page.
-
-**Examples** (in `constraints/hard/`):
-- `IllegalSecondInPair` — removes second-in-pair classes if the previous page was not first-in-pair
-
-Hard constraints are **filters**.
-
-### Tier 3 — Soft Constraints
-
-**Purpose**: Rank surviving candidates by returning a `Score`.
-
-**Return**: `Score` enum — `REWARD_Heavy(1.0)`, `REWARD_Light(0.5)`, `Neutral(0.0)`, `PUNISHMENT_Light(-0.5)`, `PUNISHMENT_Heavy(-1.0)`, or `Custom(f32)`.
-
-**Soft-max budget**: Constraints are designed to sum to ~1.2-1.5 total, leaving room for future additions.
-
-**Examples** (in `constraints/soft/`):
-- `REWARD_IsNaturalChild` — rewards a class that is a valid child of `ctx.current_parent`
-- `REWARD_FirstInPair` — rewards first-in-pair class when starting fresh after a completed pair or independent
-
-Soft constraints form a **linear scoring model** where the candidate with the highest total `Score` wins.
-
-### Tier 4 — Overrides
-
-**Purpose**: Handle known structural edge cases that bypass or redirect inference. Applied by `CommittedClassifier._override()` after the inference winner is chosen.
-
-**Return**: `Option<OverrideAction>` where:
-- `OverrideAction::Skip` — classify this page as `UNKNOWN` (blank page, no classify call)
-- `OverrideAction::InferAs(class)` — override the winner to a specific class (classify call is made)
-- `OverrideAction::ClassifyAs(class)` — skip the classify phase entirely, go straight to extract
-
-**Two override abstractions** (in `constraints/overrides/`):
-
-`Override` (single-page, stateless evaluation):
-- `BlankAfter { config: KnownObject }` — after page N is inferred as `config`, page N+1 is always `UNKNOWN`. Example: every chapter page is followed by a blank.
-
-`OverrideStream` (multi-page, stateful — design is mature, implementation in progress):
-- `MultiPageHierarchyBreak` — when a class X is followed by a known structural pattern before the next anchor (e.g. chapter -> diagrams/datatables until subchapter), skip hierarchy inference entirely. Avoids unnecessary deferral for known document patterns. **Currently contains `todo!()` stubs.**
-
-The `OVERRIDES` array is generated by Python's `OverrideSerializer` from `Override` instances registered via `build.override(...)`.
-
-### Why This Design (Performance-Aware)
-
-Tiers 1-3 use `impl_constraint_enum!` (proc macro in `pdf_classifier_macros`) which generates a **matching enum** with direct dispatch — no vtable indirection, no allocation, full inlining. Tier 4 uses `impl_instansiated_constraint_enum!` for stateful instances (e.g., `BlankAfter` holds a `KnownObject` config field).
-
-## Structural Knowledge as Lookup Tables
-
-Schema relationships are compiled into adjacency matrices at build time in `generated/reflected_objects.rs`:
-
-```rust
-type TableMatrix = [[bool; OBJECT_COUNT as usize]; OBJECT_COUNT as usize];
-
-pub const VALID_CHILDREN: TableMatrix  // can Y be a child of X?
-pub const VALID_PARENTS: TableMatrix   // can X be a parent of Y?
-pub const VALID_PAIRS: TableMatrix     // do X and Y form a valid pair?
-pub const INDEPENDENTS: [bool; ...]    // is X an independent (organizational) object?
-```
-
-O(1) helper functions: `is_child(parent, child)`, `is_pair(a, b)`, `is_independent(obj)`, `is_root(obj)`, `get_global_independents()`, `get_all_dependents(obj)`.
-
-This replaces recursive tree traversal (`obj.children.contains(...)`) with constant-time matrix lookups.
-
-## Classifier State Machine
-
-The `Classifier` struct drives a two-state machine:
-
-```rust
-enum ClassifierState {
-    Committed(CommittedClassifier),  // normal sequential inference + classify
-    Deferral(DeferralClassifier),    // searching for next independent anchor
-    Transition,                       // internal swap sentinel
-}
-```
-
-### CommittedClassifier
-
-Normal operation. Per `step()`:
-1. Run `Inferencer::infer()` on `current_page`
-2. Check `OVERRIDES` — may reroute the result
-3. Queue classify job on `ThreadPool`
-4. Call `ctx.decide()` to record inference
-5. `poll()` the thread pool for finished jobs — if a job mismatches inference, set `should_defer = true`
-
-When `should_defer` is true, `Classifier::run()` transitions to `DeferralClassifier`.
-
-### DeferralClassifier
-
-Recovery mode. Entered when a classification result contradicts the inference (a wrong guess was made that corrupts downstream context).
-
-**Phase 1 — Find anchor**:
-1. Records `start_page` of the deferral region
-2. Cycles through global independents (chapter, subchapter) and spawns classify jobs
-3. Failed jobs call `ctx.guarantee_failure_of(class, page)` — future inference knows to avoid that class on that page
-4. First successful classify call = anchor found, call `finalize(anchor_page, anchor_class)`
-
-**Phase 2 — Backfill** (`fill_in_dependents()`): Fill pages `[start_page..anchor_page]` using one of three strategies based on the dependent structure of the anchor class:
-- `fill_in_when_only_pair(pair)` — alternates the pair (diagram/datatable) across deferred pages when the anchor's only dependents are a single pair
-- `fill_in_with_sole_class(class)` — fills all deferred pages with the single dependent class
-- `fill_in_by_standard_classification(class)` — runs full inference on deferred pages restricted to the dependent candidates
-
-After backfill, returns a `CommittedClassifier` resuming from the anchor page.
-
-This is **linear-time recovery**: anchor forward, backfill structurally — no exponential backtracking.
-
-### Independent vs Dependent Objects
-
-**Independent** (organizational, safe anchors): `is_independent() == true` — chapter, subchapter. Can appear without relying on previous structure. End defer blocks.
-
-**Dependent**: `is_independent() == false` — diagram, datatable. Only meaningful relative to their parent. Unsafe to infer when context is poisoned by a prior mismatch.
-
-## Dynamic Weighting (Planned — Not Yet Implemented)
-
-The current constraint system uses a **fixed linear scoring model** (Soft constraint tiers with a ~1.5 budget). Dynamic weighting via streaming statistics — average pair counts per subchapter, object-type frequency, recent-page pattern matching — is a **planned future milestone** that will extend `Context` with online statistics.
-
-When implemented, classification feedback will dynamically adjust weights influencing soft constraint scoring, adapting to each document as it is processed.
-
-This is NOT machine learning. It is **online adaptation** via streaming statistics in the classical sense.
-
-## Worker Thread Implementation
-
-Each `WorkerThread` runs in an OS thread (`std::thread::spawn`) with its own isolated MuPDF context and document handle (thread-affine — MuPDF contexts cannot be shared).
-
-Communication uses **tokio mpsc channels** (`CHANNEL_BUFFER_SIZE = 50`) carrying `WorkerJob` variants:
-- `WorkerJob::Classify { class, page, responder }` — calls `call_classify()` via FFI
-- `WorkerJob::Extract { class, page, shared, responder }` — calls `call_extract()` via FFI, forwarding `SharedData` from the classify result
-
-`ThreadPool` holds `FuturesUnordered` for classify and extract futures separately. `poll()` is called cooperatively (using `noop_waker_ref`) to drain completed futures each loop iteration.
-
-**256 MiB default limit** per MuPDF context (`STANDARD_CTX_MEM_LIMIT` in `ffi.rs`).
-
-## FFI Layer (Rust <-> C++)
-
-The cxx bridge is in [`pdf_classifier_core/src/ffi.rs`](pdf_classifier_core/src/ffi.rs).
-
-**Opaque type wrappers** (C++ side in `ffi.hpp`):
-- `OpaqueCtx` -> wraps `fz_context*`
-- `OpaqueDoc` -> wraps `fz_document*`
-- `SharedData` -> wraps `void*` (user classify payload forwarded to extract)
-- `OpaqueResult` -> wraps `Result*` (user function return value)
-
-**Bridge functions**:
-- `create_new_ctx(mem_limit)` / `create_new_doc(ctx, path)` — initialization
-- `call_classify(ctx, doc, obj_name, page)` — dispatches via `ClassifyFuncMap`
-- `call_extract(ctx, doc, shared, obj_name, page)` — dispatches via `ExtractFuncMap`
-- `extract_shared_payload(result)` — pulls `SharedData` from an OK classify result (for passing to extract)
-- `get_result_status(result)` — 0 = OK, nonzero = Fail
-
-**Rust result types**:
-```rust
-pub type ClassificationResult = UserResult<Shared>;
-pub type ExtractionResult = UserResult<()>;
-
-pub enum UserResult<T> {
-    Ok(OkUserResult<T>),   // wraps OpaqueResult + PhantomData<T>
-    Fail(FailUserResult),  // wraps OpaqueResult
-}
-```
-
-`ExtractionResult` payload destination is **not yet designed** — extracted data currently flows nowhere. The planned destination is Python (likely via IPC), since Python is the invoking layer. This is an open design point.
-
-## User C++ Function Signatures
-
-The `UserFuncValidator` checks that user header files declare functions matching these signatures:
-
-- **Classify**: `Result* func_name(uint32_t page, fz_context* ctx, fz_document* doc)`
-- **Extract**: `Result* func_name(uint32_t page, fz_context* ctx, fz_document* doc, void* shared)`
-
-Both return `Result*` (not `void*`). The `uint32_t page` is the **first** argument.
-
-## Adding New Object Types
-
-1. **Python**: Register with `ObjectFactory`:
-   ```python
-   factory.new().name("newtype").header("newtype.hpp") \
-       .classify("classify_newtype").extract("extract_newtype") \
-       .child_of("parent_name").build()
-   ```
-2. **C++**: Implement in user header/source matching the required signatures
-3. **Build**: Run `python examples/main.py` — regenerates all C++ headers + Rust generated files
-4. **Rebuild**: `cargo build` picks up the new `KnownObject` variant and updated matrices
-
-## Project-Specific Conventions
-
-### Constraint Trait Signatures (actual)
-```rust
-// Definitive + Hard (stateless, no self):
-fn eval(ctx: &Context, class: KnownObject, page: Page) -> bool;
-
-// Soft (stateless, no self):
-fn eval(ctx: &Context, class: KnownObject, page: Page) -> Score;
-
-// Override (instansiated, takes &self):
-fn eval(&self, ctx: &Context, class: KnownObject, page: Page) -> Option<OverrideAction>;
-
-// OverrideStream (instansiated, takes &self):
-fn step(&self, ctx: &Context, class: KnownObject, page: Page) -> OverrideStreamStep;
-fn should_enter(&self, ctx: &Context, class: KnownObject, page: Page) -> bool;
-fn should_exit(&self, ctx: &Context, class: KnownObject, page: Page) -> bool;
-```
-
-### Proc-Macro Enum Generation
-`pdf_classifier_macros` provides two macros:
-- `impl_constraint_enum!(EnumName, ReturnType, VARIANT = StructType, ...)` — stateless constraints (Definitive, Hard, Soft). Generates an enum + `eval()` dispatch + `ENUM_VARIANT_COUNT`.
-- `impl_instansiated_constraint_enum!(EnumName, ReturnType, VARIANT = StructType, ...)` — stateful/instansiated constraints (Overrides). Each enum variant holds an instance of its struct.
-
-### Memory Management
-- `UniquePtr<T>` from cxx for automatic C++ cleanup on Rust side
-- C++ uses opaque void pointer wrappers (`OpaqueCtx`, `OpaqueDoc`) — never expose raw MuPDF types through the FFI boundary
-
-## Build System Integration
-
-- **`pdf_classifier_core/build.rs`**: `cxx-build` compiles `pdf_classifier_ffi/ffi.cpp`, links `libmupdf`, `bindings`, `classifier_intermediary` from `<CLASSIFIER_BUILD_DIR>/lib/`
-- **`pdf_classifier_ffi/CMakeLists.txt`**: Builds the C++ intermediary lib
-- **`examples/CMakeLists.txt`**: User project — builds example classify/extract functions, links MuPDF
-- **Python `Builder`**: Orchestrates MuPDF CMake build, user CMake build+install, C++ header generation, Rust generated file generation
-
-## Common Pitfalls
-
-1. **Build order**: `cargo build` before `python main.py` — missing `generated_object_types.rs`, `reflected_objects.rs`, and C++ headers
-2. **Function signature**: Both classify and extract take `uint32_t page` as the first arg and return `Result*`, not `void*`
-3. **UNKNOWN is always at index 0**: Python builder injects `UNKNOWN` at discriminant 0 before user objects. `Context::new()` sets `current_parent` to `OBJECTS[1].name` (the first user-defined root, e.g., CHAPTER). Verify this if adding a new root.
-4. **Opaque type casting**: C++ side casts `void*` back to `fz_context*` / `fz_document*` via `static_cast` — see `ffi.cpp`
-5. **`guarantee_failures` is deferral-only state**: Records failed class/page pairs during deferral for future inference to skip. Not a general inference blacklist.
-6. **`OverrideStream` is incomplete**: `MultiPageHierarchyBreak` has `todo!()` stubs — do not attempt to use it until implemented.
-7. **ExtractionResult has no consumer**: `extract()` produces `UserResult<()>` — no pipeline exists yet to consume extracted data.
-
-## Testing
-
-- **Rust tests**: `pdf_classifier_core/src/tests/` — `bridge.rs` (FFI smoke tests), `threading.rs`, `thread_pool.rs`, `init.rs` (test doc path helpers)
-- **Python tests**: `pdf_classifier_build/src/pdf_classifier/tests/` — builder + serializer validation
-- **Integration**: `examples/main.py` demonstrates full end-to-end schema compilation
-
-**Philosophy**: Python builder validates schemas at compile time. Rust assumes valid schemas. Tests focus on FFI boundary correctness and threading behavior.
-
-## External Dependencies
-
-- **MuPDF**: PDF rendering library (C-native, built via CMake, linked statically as `libmupdf`)
-- **cxx** (`1.0.x`): Rust-C++ FFI bridge
-- **tokio** (`1.x`, features: `sync`, `macros`, `rt`): Async runtime for worker channels
-- **futures** (`0.3.x`): `FuturesUnordered` for parallel job collection
-- **thiserror**: Structured error types throughout
-- **CMake 4.2+**: Required for building MuPDF and user projects
-- **pdf_classifier_macros**: Internal proc-macro crate for constraint enum generation
+- `.organizational()` → sets `true` in the generated `INDEPENDENTS` array
+  (drives `is_independent()`).
+- `.pair_to(name, order)` → `order=1` first in pair, `order=2` second.
+- `.child_of(name)` → parent/child relationship.
+- The builder injects an `UNKNOWN` object at discriminant 0 (not user-defined).
+
+## Generated Artifacts (do not edit by hand)
+
+**Rust** → `pdf_classifier_core/src/generated/`:
+- `generated_object_types.rs` — `KnownObject` enum, `OBJECT_COUNT`,
+  `has_children/has_pair/is_first_in_pair/is_second_in_pair`, `Display`,
+  `TryFrom<u8>`.
+- `reflected_objects.rs` — `OBJECTS` node tree, the adjacency matrices, the
+  `INDEPENDENTS` array, and the helper fns above.
+- `overrides.rs` — the `OVERRIDES` array and the `OVERRIDE_STREAMS` `LazyLock`.
+
+**C++** → `<build_dir>/include/shared/`:
+- `generated_page_types.h` — `enum KnownObject`, `page_type_to_string`,
+  `page_type_from_string`.
+- `func_map.h` — `ClassifyFuncMap` / `ExtractFuncMap` for dispatch.
+
+## Adding a New Object Type
+
+1. **Python**: register it with `ObjectFactory` (`.name().header().classify()
+   .extract().child_of()...`).
+2. **C++**: implement the classify/extract functions with the required
+   signatures in the user header/source.
+3. **Rebuild**: `python examples/main.py` regenerates all artifacts and rebuilds
+   both native sides.
+
+## Proc-Macro / Constraint Conventions
+
+`pdf_classifier_macros` provides:
+- `impl_constraint_enum!(Name, Ret, VARIANT = Struct, ...)` — stateless
+  constraints (Definitive/Hard/Soft). Generates a matching enum, `eval()`
+  dispatch, and `ENUM_VARIANT_COUNT`.
+- `impl_instansiated_constraint_enum!(Name, Ret, VARIANT = Struct, ...)` —
+  stateful/instantiated constraints (Overrides hold config, e.g. `BlankAfter`).
+
+Memory management across the boundary uses `cxx`'s `UniquePtr<T>` for automatic
+C++-side cleanup; opaque void wrappers keep MuPDF types off the Rust side.
+
+## Diagnostic Visualizer (`tools/visualizer/`)
+
+A stdlib-Python-served, self-contained web UI that **replays a run purely from
+its tracing-tree log** — no changes to the classifier. It renders the page strip,
+a step-by-step stepper (inference tiers, overrides, deferral probes, backfill),
+a document tree, inference margins, state/errors/extractions, and an **error %
+tab**. See its [README](../tools/visualizer/README.md).
+
+The error % tab compares a run's decisions against a per-page **ground truth** in
+`static/groundtruth.js`, generated by `build_groundtruth.py` from the static
+export in `data/large_test_doc_classified/` combined with the PDF's own text
+signatures (the export gives the authoritative anchor *sequence*; the PDF text
+positions every page). Regenerate it with `python build_groundtruth.py`
+(needs `pymupdf`) if the export or page range changes.
+
+## Known Incomplete / In-Progress Areas
+
+Be aware these are not finished; verify current code before relying on them:
+
+- **Deferral is not yet robust.** The anchor scan probes one independent class
+  per page before advancing, so a real anchor can be walked past; backfill pair
+  parity is seeded from the region start without checking the last committed
+  decision. This is the actively-worked area (`page-keeper` / issue #14 lineage).
+- **`OverrideAction::ClassifyAs` is unused** and would need extraction-without-
+  classify support to work.
+- **Context has no rollback.** `Context::decide` records unconditionally; the
+  `todo` about reverting an incorrect independent decision is unimplemented —
+  deferral is the recovery mechanism instead.
+- Some generated helpers (e.g. `get_all_independents`) are only exercised by the
+  reference schema and may not generalize; check them if you add object types.
 
 ## AI Agent Guidance
 
-When reasoning about this codebase:
+1. **Start at [`examples/main.py`](../examples/main.py)** — the schema,
+   overrides, and page range are all defined there.
+2. **Trust [`generated/`](../pdf_classifier_core/src/generated/) as schema
+   truth** — it is what Rust actually compiles against at runtime.
+3. **Respect the tier order** Definitive → Hard → Soft → Overrides; never add
+   scoring to hard constraints or filtering to soft ones.
+4. **Python generates the native code.** Any change to `ObjectFactory`
+   definitions requires re-running `python examples/main.py` before `cargo build`.
+5. **Cursor moves go through `PageLock`.** Use `try_decide_as` where standing
+   still may be valid (deferral), `decide_as` where advancing is mandatory.
+   Never mutate a raw page counter.
+6. **Deferral owns recovery**, not context rollback. The deferred region
+   `[start_page .. anchor_page)` is backfilled structurally.
+7. **This is not ML.** If a change starts to look like learned weights or
+   training, stop — the design is a fixed linear scoring model plus online
+   statistics *planned* for the future, in the classical streaming sense only.
 
-1. **Start with `examples/main.py`** — all object types, overrides, and relationships are defined there
-2. **Check `pdf_classifier_core/src/generated/`** — this is what Rust actually sees at runtime; it is schema truth
-3. **Trace FFI through `ffi.rs`** — Rust calls C++ which dispatches to user functions via `func_map.h`
-4. **Respect the constraint tier order**: Definitive -> Hard -> Soft -> Overrides. Do not add scoring to Hard constraints or filtering to Soft ones.
-5. **Python generates Rust**: Changes to `ObjectFactory` definitions require re-running `python examples/main.py` before `cargo build`
-6. **DeferralClassifier owns backfill**: Deferred region `[start_page..anchor_page]` is filled via `fill_in_dependents()` using one of three strategies based on the dependent structure
-
-**Not a typical project**: Three-language architecture exists because of **orthogonal constraints**, not arbitrary choices. Python = schema reflection, C++ = MuPDF thread affinity, Rust = safe parallelism. Collapsing any two layers violates one of these constraints.
+**Not a typical project**: the three-language split exists because of orthogonal
+constraints — Python for schema reflection, C++ for MuPDF thread affinity, Rust
+for safe parallelism. Collapsing any two violates one of those constraints.
