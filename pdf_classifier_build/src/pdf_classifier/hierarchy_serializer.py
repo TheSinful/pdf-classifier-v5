@@ -19,6 +19,7 @@ class HierarchySerializer(Serializer):
     def generate(self) -> None: 
         logger.info("Generating Rust hierarchy -> %s", self.out_path)
         logger.debug("Hierarchy contains %d objects", len(self.objects))
+        self._append_allow_unused()
         self._append_imports()
         self._node_struct()
         self._object_list()
@@ -39,6 +40,11 @@ class HierarchySerializer(Serializer):
         self._get_all_independents_fn()
         self._dump_data(self.out_path, self.data)
         logger.debug("Hierarchy serializer done")
+    
+    def _append_allow_unused(self): 
+        self.data += textwrap.dedent("""
+            #![allow(unused)]                             
+        """)
     
     def _append_imports(self): 
         self.data += textwrap.dedent("""
