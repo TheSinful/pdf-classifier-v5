@@ -215,22 +215,22 @@ class TestIsSecondInPairMethod:
 
 
 # ---------------------------------------------------------------------------
-# ToString impl
+# Display impl
 # ---------------------------------------------------------------------------
 
 class TestToStringImpl:
     def test_impl_block_present(self, ser: RustClassSerializer):
         ser._display_impl()
-        assert "impl ToString for KnownObject {" in ser.data
+        assert "impl std::fmt::Display for KnownObject {" in ser.data
 
     def test_fn_signature(self, ser: RustClassSerializer):
         ser._display_impl()
-        assert "fn to_string(&self) -> String {" in ser.data
+        assert "fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {" in ser.data
 
     def test_all_variants_map_to_lowercase_name(self, ser: RustClassSerializer):
         ser._display_impl()
         for name in ("unknown", "chapter", "subchapter", "diagram", "datatable"):
-            assert f'"{name}".to_string()' in ser.data
+            assert f'write!(f, "{name}")' in ser.data
 
     def test_variant_names_are_uppercase_in_match_arm(self, ser: RustClassSerializer):
         ser._display_impl()
@@ -376,7 +376,7 @@ class TestFullGenerate:
             s = RustClassSerializer(objs, Path(tmp))
             s.generate()
             content = (Path(tmp) / "generated_object_types.rs").read_text()
-            assert "impl ToString for KnownObject {" in content
+            assert "impl std::fmt::Display for KnownObject {" in content
             assert "impl TryFrom<&str> for KnownObject {" in content
             assert "impl TryFrom<u8> for KnownObject {" in content
             assert "impl Default for KnownObject {" in content
