@@ -24,6 +24,7 @@ tracing = { version = "0.1.44", features = ["log"] }
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 tracing-tree = "0.4.1"
 ctor = "1.0.7"
+proptest = "1.11.0"
 
 [build-dependencies]
 cxx-build = "1.0.192"
