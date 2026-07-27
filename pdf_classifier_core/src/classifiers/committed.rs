@@ -12,6 +12,7 @@ use crate::obj_list::KnownObjectList;
 use crate::page::Page;
 use crate::page_lock::PageLock;
 use crate::stream::Streamer;
+use crate::threading::pool::AvailablePollCase;
 use crate::threading::pool::ThreadPool;
 use crate::{generated::overrides::OVERRIDES, threading::pool::JobResult};
 use cxx::CxxString;
@@ -28,6 +29,7 @@ pub struct CommittedClassifier {
     pub ctx: Context,
     pub streamer: Option<Streamer>,
     pub page_lock: PageLock,
+    pub deferral_origin: Option<Page>,
 }
 
 impl CommittedClassifier {
@@ -47,6 +49,7 @@ impl CommittedClassifier {
                 Streamer::new()
                     .expect("cannot initialize classification without linking to a frontend!"),
             ),
+            deferral_origin: None,
         }
     }
 
@@ -64,13 +67,16 @@ impl CommittedClassifier {
             ctx: context,
             should_defer: false,
             streamer: None,
+            deferral_origin: None,
         }
     }
 
     #[instrument(skip(self), fields(current_page = %self.current_page(), err))]
     pub fn step(&mut self) -> Result<(), ClassificationError> {
         self.step_inner()?;
-        self.poll();
+        if let AvailablePollCase::Available(results) = self.thread_pool.poll_available() {
+            self.handle_polled_results(results.into());
+        };
 
         Ok(())
     }
@@ -124,7 +130,7 @@ impl CommittedClassifier {
         self.ctx.decide(page, class);
         if let Some(_) = self.page_lock.try_increment_by(STEP_COUNT.into()) {
             Ok(())
-        } else { 
+        } else {
             Err(ClassificationError::PageLockLocked)
         }
     }
@@ -133,6 +139,17 @@ impl CommittedClassifier {
     pub fn decide_as(&mut self, class: KnownObject, page: Page) -> () {
         self.ctx.decide(page, class);
         self.page_lock.increment_by(STEP_COUNT.into());
+    }
+
+    #[instrument(skip(self))]
+    pub fn decide_as_no_increment(&mut self, class: KnownObject, page: Page) {
+        self.ctx.decide(page, class);
+    }
+
+    #[instrument(skip(self))]
+    pub fn decide_and_classify_no_increment(&mut self, class: KnownObject, page: Page) {
+        self.decide_as_no_increment(class, page);
+        self.thread_pool.classify(class, page);
     }
 
     #[instrument(skip(self))]
@@ -168,26 +185,20 @@ impl CommittedClassifier {
         None
     }
 
-    pub fn poll(&mut self) -> Option<()> {
-        if let Some(results) = self.thread_pool.poll() {
-            if !results.is_empty() {
-                let _span = debug_span!("polled_results", result_count = results.len()).entered();
-                results.into_iter().for_each(|result| match result {
-                    JobResult::Classification {
-                        page,
-                        res,
-                        as_class,
-                    } => self.handle_classification_result(page, as_class, res),
-                    JobResult::Extraction {
-                        page,
-                        res,
-                        as_class,
-                    } => self.handle_extraction_result(page, as_class, res),
-                });
-            }
-            return Some(());
-        }
-        None
+    #[instrument(name = "polled_results", skip_all, fields(result_count = results.len()))]
+    pub fn handle_polled_results(&mut self, results: Vec<JobResult>) -> () {
+        results.into_iter().for_each(|result| match result {
+            JobResult::Classification {
+                page,
+                res,
+                as_class,
+            } => self.handle_classification_result(page, as_class, res),
+            JobResult::Extraction {
+                page,
+                res,
+                as_class,
+            } => self.handle_extraction_result(page, as_class, res),
+        });
     }
 
     #[instrument(skip(self))]
@@ -199,6 +210,7 @@ impl CommittedClassifier {
     ) -> () {
         if let Err(_) = res {
             if !self.should_defer {
+                self.deferral_origin = Some(page);
                 self.defer();
             }
         }
@@ -256,7 +268,9 @@ impl CommittedClassifier {
         .entered();
 
         info!("polling before entering deferral");
-        while let Some(_) = self.poll() {}
+
+        let poll = self.thread_pool.poll_draining();
+        self.handle_polled_results(poll)
     }
 
     pub fn should_enter_override_stream(&self) -> Option<StreamPtr> {
@@ -337,11 +351,13 @@ mod tests {
 
         for _ in LARGE_TEST_DOC_START_PAGE..end_page {
             classifier.step().unwrap();
-            classifier.poll();
+            let poll = classifier.thread_pool.poll_draining();
+            classifier.handle_polled_results(poll);
         }
 
         info!("[TEST] finalized stepping, polling");
-        while let Some(_) = classifier.poll() {}
+        let poll = classifier.thread_pool.poll_draining();
+        classifier.handle_polled_results(poll);
 
         let decisions: Vec<String> = classifier
             .ctx

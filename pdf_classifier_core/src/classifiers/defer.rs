@@ -1,4 +1,6 @@
-use tracing::instrument;
+use std::ops::Deref;
+
+use tracing::{error, instrument};
 
 use super::{ClassificationError, committed::CommittedClassifier};
 use crate::{
@@ -9,7 +11,7 @@ use crate::{
     obj_list::KnownObjectList,
     page::Page,
     page_lock::PageLock,
-    threading::pool::JobResult,
+    threading::pool::{AvailablePollCase, JobResult},
 };
 
 #[derive(Debug)]
@@ -22,14 +24,36 @@ pub struct DeferralClassifier {
     independents: Vec<KnownObject>,
 }
 
+pub enum DeferralExitCase {
+    NoAnchorFound(CommittedClassifier),
+    Successful(CommittedClassifier),
+}
+
+impl Deref for DeferralExitCase {
+    type Target = CommittedClassifier;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            DeferralExitCase::NoAnchorFound(c) => c,
+            DeferralExitCase::Successful(c) => c,
+        }
+    }
+}
+
 impl DeferralClassifier {
     pub fn new(mut base: CommittedClassifier) -> Self {
         let mut independents = get_global_independents();
         base.page_lock = base.page_lock.lock();
 
+        let start_page = base.deferral_origin.take().unwrap_or(base.current_page());
+
         Self {
-            start_page: base.current_page(),
-            page_lock: base.page_lock.clone().unlock(),
+            start_page,
+            // Scan from the page whose classification actually failed, not from
+            // wherever the committed cursor drifted to - the failed page is the
+            // most likely anchor, since a wrong guess usually means an
+            // unexpected independent.
+            page_lock: PageLock::Unlocked(start_page),
             base,
             current_independent: independents
                 .pop()
@@ -44,13 +68,19 @@ impl DeferralClassifier {
     }
 
     #[instrument(name = "enter_deferral", skip_all, fields(page = %self.current_page(), available_workers = self.base.thread_pool.available_workers_count()))]
-    pub fn find_next_independent(mut self) -> Result<CommittedClassifier, ClassificationError> {
+    pub fn find_next_independent(mut self) -> Result<DeferralExitCase, ClassificationError> {
         loop {
             if self.base.thread_pool.available_workers_count() > 0 {
                 self.spawn_worker();
             }
 
-            let Some(results) = self.base.thread_pool.poll() else {
+            if self.current_page().0 >= self.base.ctx.end_page.0 {
+                error!("no anchor found prior to reaching document end");
+                return Ok(DeferralExitCase::NoAnchorFound(self.base));
+            }
+
+            let AvailablePollCase::Available(results) = self.base.thread_pool.poll_available()
+            else {
                 continue;
             };
 
@@ -73,21 +103,23 @@ impl DeferralClassifier {
     #[instrument(name = "exit_deferral", skip(self), fields(from_page = %self.start_page))]
     fn finalize(
         mut self,
-        on_page: Page,
+        mut on_page: Page,
         as_class: KnownObject,
-    ) -> Result<CommittedClassifier, ClassificationError> {
-        self.base.page_lock = PageLock::Unlocked(on_page);
-        self.base.try_decide_as(as_class, on_page).unwrap(); // no error possible
-
+    ) -> Result<DeferralExitCase, ClassificationError> {
         self.end_page = Some(on_page);
 
         self.fill_in_dependents(as_class)?;
 
-        while let Some(_) = self.base.poll() {}
+        let poll = self.base.thread_pool.poll_draining();
+        self.base.handle_polled_results(poll);
+
+        self.base.decide_as_no_increment(as_class, on_page);
 
         self.base.should_defer = false;
-        self.base.page_lock.increment();
-        Ok(self.base)
+        on_page.next();
+        self.base.page_lock = PageLock::Unlocked(on_page);
+
+        Ok(DeferralExitCase::Successful(self.base))
     }
 
     #[instrument(skip_all, fields(ended_on_class = %finalized_as))]
@@ -100,7 +132,22 @@ impl DeferralClassifier {
             && dependents[0].is_first_in_pair()
             && dependents[1].is_second_in_pair()
         {
-            return Ok(self.fill_in_with_only_pair((dependents[0], dependents[1])));
+            let Some(start_page_decision) = self.base.ctx.get_decision(self.start_page.previous())
+            else {
+                return Err(ClassificationError::RecordNotFound);
+            };
+
+            if !start_page_decision.has_pair() {
+                return Ok(self.fill_in_with_only_pair((dependents[0], dependents[1])));
+            }
+
+            if start_page_decision.is_first_in_pair() {
+                return Ok(self.fill_in_with_only_pair((dependents[1], dependents[0])));
+            }
+
+            if start_page_decision.is_second_in_pair() {
+                return Ok(self.fill_in_with_only_pair((dependents[0], dependents[1])));
+            }
         } // i.e example document type, of dependents: diagram-datatable
 
         if dependents.len() == 1 {
@@ -129,8 +176,10 @@ impl DeferralClassifier {
                 .inferencer
                 .infer(&mut self.base.ctx, *page, &dependents)?;
 
-            self.base
-                .decide_and_classify_as(inferenced, self.start_page + Page::from(page_offset))?;
+            self.base.decide_and_classify_no_increment(
+                inferenced,
+                self.start_page + Page::from(page_offset),
+            );
         }
 
         Ok(())
@@ -144,20 +193,20 @@ impl DeferralClassifier {
             .for_each(|(i, page)| match i % 2 {
                 0 => {
                     tracing::trace!("filling in page {} as pair object {}", page, pair.0);
-                    self.base.decide_and_classify_as(pair.0, page).unwrap()
+                    self.base.decide_and_classify_no_increment(pair.0, page);
                 }
                 _ => {
                     tracing::trace!("filling in page {} as pair object {}", page, pair.1);
-                    self.base.decide_and_classify_as(pair.1, page).unwrap()
+                    self.base.decide_and_classify_no_increment(pair.1, page);
                 }
             });
     }
 
     #[instrument(skip(self))]
     fn fill_in_with_sole_class(&mut self, class: KnownObject) -> () {
-        self.fill_range()
-            .into_iter()
-            .for_each(|page| self.base.decide_and_classify_as(class, page).unwrap());
+        self.fill_range().into_iter().for_each(|page| {
+            self.base.decide_and_classify_no_increment(class, page);
+        });
     }
 
     fn get_end_page(&self) -> Page {
@@ -187,9 +236,8 @@ impl DeferralClassifier {
             .thread_pool
             .classify_unchecked(self.current_independent, self.current_page());
 
-        self.page_lock.increment();
-
         if self.independents.is_empty() {
+            self.page_lock.increment();
             self.independents = get_global_independents();
         }
 

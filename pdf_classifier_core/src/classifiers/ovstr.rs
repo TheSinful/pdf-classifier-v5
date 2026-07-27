@@ -1,16 +1,14 @@
 use crate::constraints::overrides::OverrideStream;
-use crate::context::Context;
-use crate::page::Page;
-use crate::threading::pool::{JobResult, ThreadPool};
+use crate::threading::pool::JobResult;
 use crate::{
     classifiers::{ClassificationError, committed::CommittedClassifier},
     constraints::overrides::OverrideStreamExitCase,
-    context::ContextUpdateHistory,
 };
 use std::fmt::Debug;
 use std::ops::Deref;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
+use tracing::{instrument, trace};
 
 pub struct StreamPtr(pub &'static Mutex<Box<dyn OverrideStream>>);
 
@@ -43,83 +41,87 @@ impl OverrideStreamClassifier {
         Self { base, for_stream }
     }
 
+    #[instrument(skip(self), fields(stream = %self.for_stream.lock().unwrap()))]
     pub fn till_stream_end(mut self) -> Result<CommittedClassifier, ClassificationError> {
-        tracing::info!(
-            "beginning override for: {}",
-            self.for_stream.lock().unwrap()
-        );
+        let mut first_iter = true;
+
         loop {
             let mut stream = self.for_stream.lock().unwrap();
-            let history = ContextUpdateHistory::new();
 
-            tracing::trace!(
-                "initialized override step for page: {}",
-                self.base.current_page()
-            );
+            if first_iter {
+                if Self::should_break_from_exit_case(&mut self.base, &stream)? {
+                    return Ok(self.base);
+                }
+
+                first_iter = false;
+            }
+
             let step = stream.step(&self.base.ctx, self.base.current_page());
             self.base.handle_override(step)?;
 
-            let exit_case = Self::should_break_from_exit_case(
-                &self.base.ctx,
-                self.base.current_page(),
-                &mut self.base.thread_pool,
-                stream,
-            );
+            let results = self.base.thread_pool.poll_draining();
+
+            self.base.handle_polled_results(results);
+
+            let exit_case = Self::should_break_from_exit_case(&mut self.base, &stream)?;
 
             if exit_case {
                 tracing::trace!(
                     "hit exit case for stream on page {}",
                     self.base.current_page()
                 );
+
                 return Ok(self.base);
             }
         }
     }
 
     fn should_break_from_exit_case(
-        ctx: &Context,
-        current_page: Page,
-        thread_pool: &mut ThreadPool,
-        stream: OverrideStreamBorrow<'_>,
-    ) -> bool {
+        base: &mut CommittedClassifier,
+        stream: &OverrideStreamBorrow<'_>,
+    ) -> Result<bool, ClassificationError> {
+        let current_page = base.current_page();
+        let ctx = &base.ctx;
+        let thread_pool = &mut base.thread_pool;
+
         match stream.should_exit(ctx, current_page) {
             OverrideStreamExitCase::IfClassifiedAs(class) => {
                 tracing::trace!("evaluating for exit case on page {}", current_page);
 
                 thread_pool.classify_unchecked(class, current_page);
 
-                let results = loop {
-                    if let Some(results) = thread_pool.poll()
-                        && results.len() > 0
-                    {
-                        break results;
-                    }
-                };
+                let results = thread_pool
+                    .poll_blocking()
+                    .expect("lost result for exit stream case!");
 
-                debug_assert!(
-                    results.len() == 1,
-                    "should only have one classification result while iterating in override stream context!",
-                );
-
-                match &results[0] {
+                match results {
                     JobResult::Classification {
                         page,
                         res,
                         as_class,
                     } => {
                         debug_assert!(
-                            page == &current_page,
+                            page == current_page,
                             "expected to remain in a sequential iteration while in override stream,
                             but received a result for page {} while current page is {}",
                             page,
                             current_page
                         );
                         debug_assert!(
-                            as_class == &class,
+                            as_class == class,
                             "expected singular result resulted class to match override stream's class."
                         );
 
-                        return res.is_ok();
+                        trace!(?page, ?class, "found exit case, calling extraction");
+
+                        if res.is_ok() {
+                            // since the classification was Ok, extraction will automatically begin on it
+                            base.decide_as(class, current_page);
+
+                            Ok(true)
+                        } else {
+                            Ok(false)
+                        }
                     }
                     JobResult::Extraction {
                         page: _,
@@ -130,7 +132,7 @@ impl OverrideStreamClassifier {
                     ),
                 }
             }
-            OverrideStreamExitCase::Exit => true,
+            OverrideStreamExitCase::Exit => Ok(true),
         }
     }
 }
