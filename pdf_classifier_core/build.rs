@@ -3,21 +3,24 @@ use std::env;
 fn main() {
     let root = env::var("CARGO_MANIFEST_DIR").unwrap();
 
-    // println!("cargo:rerun-if-changed={}/pdf_classifier_ffi/ffi.cpp", root);
-    // println!("cargo:rerun-if-changed={}/pdf_classifier_ffi/ffi.hpp", root);
-    // println!(
-    //     "cargo:rerun-if-changed={}/pdf_classifier_ffi/CMakeLists.txt",
-    //     root
-    // );
+    println!("cargo:rerun-if-changed={}/../pdf_classifier_ffi/ffi.cpp", root);
+    println!("cargo:rerun-if-changed={}/../pdf_classifier_ffi/ffi.hpp", root);
+    println!("cargo:rerun-if-changed={}/src/ffi.rs", root);
+
+    // Switching user projects (examples <-> tools/colordoc) changes this, and
+    // with it the func map ffi.cpp compiles against. Without this the stale
+    // bindings.lib is silently reused and every classify call fails at runtime
+    // with "couldn't find obj: '<class>' in generated func map".
+    println!("cargo:rerun-if-env-changed=CLASSIFIER_BUILD_DIR");
 
     let build_dir =
         env::var("CLASSIFIER_BUILD_DIR").unwrap_or(format!("{}/../examples/build", root));
 
-    // println!(
-    //     "cargo:rerun-if-changed={}/include/shared/func_map.h",
-    //     build_dir
-    // );
-    // println!("cargo:rerun-if-changed={}/include/generated", build_dir);
+    println!(
+        "cargo:rerun-if-changed={}/include/shared/func_map.h",
+        build_dir
+    );
+    println!("cargo:rerun-if-changed={}/include/generated", build_dir);
 
     let mut build = cxx_build::bridges(&["src/ffi.rs"]);
     build
