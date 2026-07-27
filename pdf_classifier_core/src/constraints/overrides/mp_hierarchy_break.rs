@@ -52,7 +52,7 @@ impl Display for MultiPageHierarchyBreak {
 unsafe impl Sync for MultiPageHierarchyBreak {}
 
 impl OverrideStream for MultiPageHierarchyBreak {
-    fn step(&mut self, ctx: &Context, page: Page) -> OverrideAction {
+    fn step(&mut self, _ctx: &Context, page: Page) -> OverrideAction {
         let class = self.fill_with.index(self.current_fillin_idx);
         tracing::trace!("[OVSTR] streaming page {} as class {}", page, class); 
         if self.current_fillin_idx + 1 >= self.fill_with.len() {
