@@ -56,8 +56,9 @@ pub enum WorkerJob {
 #[derive(Debug)]
 pub struct WorkerThread {
     pub id: u32,
-    is_working: Arc<AtomicBool>,
     sender: Sender<WorkerJob>,
+    #[cfg(test)]
+    is_working: Arc<AtomicBool>,
 }
 
 /// Stored within the actual spawned thread,
@@ -93,11 +94,14 @@ impl WorkerThread {
 
         Self {
             sender,
+            #[cfg(test)]
             is_working,
             id,
         }
     }
 
+    #[cfg(test)]
+    #[expect(dead_code, reason = "used within testing")]
     pub fn is_busy(&self) -> bool {
         self.is_working.load(Ordering::Acquire)
     }

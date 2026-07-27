@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use crate::generated::generated_object_types::KnownObject;
 use cxx::{CxxString, UniquePtr, let_cxx_string};
 use std::fmt::Debug;
@@ -20,7 +18,6 @@ pub type ExtractionResult = UserResult<CxxString>;
 pub type ClassificationResult = UserResult<Shared>;
 
 #[cxx::bridge]
-#[allow(unused)]
 mod bridge {
 
     unsafe extern "C++" {
@@ -104,6 +101,7 @@ impl<T> UserResult<T> {
         }
     }
 
+    #[expect(dead_code, reason = "used within unit tests")]
     pub fn err(self) -> Option<FailUserResult> {
         match self {
             UserResult::Ok(_) => None,
@@ -111,6 +109,7 @@ impl<T> UserResult<T> {
         }
     }
 
+    #[expect(dead_code, reason = "used to propogate error reason to the front-end")]
     pub fn fail_rsn(&self) -> Option<String> {
         match self {
             UserResult::Ok(_) => None,

@@ -15,6 +15,7 @@ use std::fmt::Display;
 pub enum OverrideAction {
     Skip,
     InferAs(KnownObject),
+    #[expect(dead_code, reason = "possible usage case within future overridestreams")]
     ClassifyAs(KnownObject),
 }
 
@@ -30,6 +31,7 @@ impl Display for OverrideAction {
 
 pub enum OverrideStreamExitCase {
     IfClassifiedAs(KnownObject),
+    #[expect(dead_code, reason = "possible usage case within future overridestreams")]
     Exit,
 }
 
