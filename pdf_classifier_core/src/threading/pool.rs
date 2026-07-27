@@ -9,6 +9,7 @@ use cxx::CxxString;
 use futures::task::noop_waker_ref;
 use futures::{StreamExt, stream::FuturesUnordered};
 use std::collections::HashMap;
+use std::debug_assert;
 use std::fmt::{Debug, Display};
 use std::{
     path::PathBuf,
@@ -77,6 +78,12 @@ impl Display for JobResult {
     }
 }
 
+pub enum AvailablePollCase {
+    Exhausted,
+    NoneAvailable,
+    Available(Vec<JobResult>),
+}
+
 impl ThreadPool {
     pub fn new(num_threads: usize, doc_path: PathBuf) -> Self {
         let mut available_workers = Vec::new();
@@ -101,7 +108,58 @@ impl ThreadPool {
         }
     }
 
-    pub fn poll(&mut self) -> Option<Vec<JobResult>> {
+    pub fn poll_draining(&mut self) -> Vec<JobResult> {
+        let mut total_results = vec![];
+
+        while let Some(mut r) = self.poll() {
+            total_results.append(&mut r);
+        }
+
+        total_results
+    }
+
+    pub fn poll_available(&mut self) -> AvailablePollCase {
+        if let Some(r) = self.poll() {
+            if r.is_empty() {
+                AvailablePollCase::NoneAvailable
+            } else {
+                AvailablePollCase::Available(r)
+            }
+        } else {
+            AvailablePollCase::Exhausted
+        }
+    }
+
+    /// Blocks and polls until a result is found
+    /// Differs to that of [poll_available] and [poll_draining]
+    /// by forcing a loop until any result is found rather than
+    /// awaiting until all results.
+    ///
+    /// Intended for usage where:
+    ///     1. The pool is already drained
+    ///     2. Only one task is being pushed before requiring a poll (will cause a debug panic)
+    pub fn poll_blocking(&mut self) -> Option<JobResult> {
+        if self.exhausted(&vec![])
+        /* opts out of results.is_empty() check */
+        {
+            return None;
+        }
+
+        loop {
+            if let Some(mut poll) = self.poll() {
+                if !poll.is_empty() {
+                    debug_assert!(
+                        poll.len() == 1,
+                        "poll_blocking should only be expecting singular results."
+                    );
+
+                    return Some(poll.swap_remove(0));
+                }
+            }
+        }
+    }
+
+    fn poll(&mut self) -> Option<Vec<JobResult>> {
         let mut cx = Context::from_waker(noop_waker_ref());
         let mut results: Vec<JobResult> = vec![];
 
