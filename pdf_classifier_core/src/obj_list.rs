@@ -1,4 +1,3 @@
-use tracing::Level;
 use tracing::Span;
 use tracing::field::Empty;
 use tracing::instrument;

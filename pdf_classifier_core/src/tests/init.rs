@@ -1,8 +1,6 @@
 use paste::paste;
 use std::path::PathBuf;
-use tracing_subscriber::{
-    EnvFilter, fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt,
-};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use tracing_tree::HierarchicalLayer;
 
 #[cfg(test)]
