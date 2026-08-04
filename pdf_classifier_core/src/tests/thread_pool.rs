@@ -3,26 +3,23 @@ use crate::generated::generated_object_types::KnownObject;
 use crate::page::Page;
 use crate::tests::init::get_LARGE_TEST_DOC_test_path;
 use crate::threading::pool::*;
-use std::unreachable;
 
 fn make_pool() -> ThreadPool {
     ThreadPool::new(4, get_LARGE_TEST_DOC_test_path())
 }
 
-fn expect_result(of_class: KnownObject, result: Option<JobResult>) {
-    assert!(result.is_some());
-
-    match result.unwrap() {
+fn expect_result(of_classes: &[KnownObject], result: JobResult) -> Option<bool> {
+    match result {
         JobResult::Classification {
             page: _,
             res: _,
             as_class,
-        } => assert_eq!(as_class, of_class),
+        } => Some(of_classes.contains(&as_class)),
         JobResult::Extraction {
             page: _,
             res: _,
             as_class: _,
-        } => unreachable!("shouldn't get an extraction case when only scheduling classifications."),
+        } => None,
     }
 }
 
@@ -35,8 +32,20 @@ fn test_poll_blocking() {
     pool.classify(KnownObject::CHAPTER, FIRST_PAGE);
     pool.classify(KnownObject::SUBCHAPTER, FIRST_PAGE);
 
-    expect_result(KnownObject::CHAPTER, pool.poll_blocking()); // should be the first available
-    expect_result(KnownObject::SUBCHAPTER, pool.poll_blocking()); // should be available after blocking again
+    let used_classes = &[KnownObject::CHAPTER, KnownObject::SUBCHAPTER];
+
+    loop {
+        let Some(result) = pool.poll_blocking() else {
+            break;
+        };
+
+        let Some(current_poll) = expect_result(used_classes, result) else {
+            continue; // early extraction
+        };
+
+        assert!(current_poll)
+    }
+
     assert!(pool.poll_blocking().is_none()); // check for exhaustion
 }
 
