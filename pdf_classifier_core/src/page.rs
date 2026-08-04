@@ -56,8 +56,9 @@ impl Add for Page {
 }
 
 impl Page {
+    
     pub fn previous(&self) -> Page {
-        Page(self.0 - 1)
+        Page(self.0.saturating_sub(1))
     }
 
     pub fn next(&mut self) -> () {
