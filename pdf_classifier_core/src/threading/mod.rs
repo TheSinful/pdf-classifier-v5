@@ -1,10 +1,14 @@
 pub mod pool;
 
+#[cfg(test)]
+use crate::ffi::{FailUserResult, OkUserResult, UserResult};
 use crate::{
     ffi::{self, ClassificationResult, ExtractionResult},
     generated::generated_object_types::KnownObject,
     page::Page,
 };
+#[cfg(test)]
+use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 use std::{
     path::PathBuf,
@@ -243,6 +247,76 @@ impl WorkerThread {
                 "Thread reciever for page {} as class {} prematurely dropped!",
                 page, class
             ),
+        }
+    }
+}
+
+#[cfg(test)]
+impl WorkerThread {
+    pub fn spawn_oracle(truth: Arc<HashMap<Page, KnownObject>>, id: u32) -> Self {
+        let (sender, mut receiver) = tokio::sync::mpsc::channel::<WorkerJob>(CHANNEL_BUFFER_SIZE);
+        let is_working = Arc::new(AtomicBool::new(false));
+        let is_working_clone = is_working.clone();
+
+        thread::spawn(move || {
+            while let Some(job) = receiver.blocking_recv() {
+                is_working_clone.store(true, Ordering::Release);
+                Self::handle_incoming_job(job, truth.clone());
+            }
+        });
+
+        Self {
+            sender,
+            is_working,
+            id,
+        }
+    }
+
+    fn send_or_panic<T>(
+        responder: tokio_oneshot::Sender<UserResult<T>>,
+        result: UserResult<T>,
+    ) -> () {
+        match responder.send(result) {
+            Ok(_) => {}
+            Err(_) => panic!("receiver was dropped prematurely!"),
+        }
+    }
+
+    fn handle_incoming_job(job: WorkerJob, truth: Arc<HashMap<Page, KnownObject>>) {
+        match job {
+            WorkerJob::Classify {
+                class,
+                responder,
+                page,
+            } => {
+                if let Some(expected) = truth.get(&page)
+                    && *expected == class
+                {
+                    return Self::send_or_panic(responder, UserResult::Ok(OkUserResult::fake()));
+                }
+
+                return Self::send_or_panic(
+                    responder,
+                    UserResult::Fail(FailUserResult::fake("not within static truth".to_string())),
+                );
+            }
+            WorkerJob::Extract {
+                class,
+                shared: _,
+                responder,
+                page,
+            } => {
+                if let Some(expected) = truth.get(&page)
+                    && *expected == class
+                {
+                    return Self::send_or_panic(responder, UserResult::Ok(OkUserResult::fake()));
+                }
+
+                return Self::send_or_panic(
+                    responder,
+                    UserResult::Fail(FailUserResult::fake("not within static truth".to_string())),
+                );
+            }
         }
     }
 }

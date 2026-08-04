@@ -108,6 +108,33 @@ impl ThreadPool {
         }
     }
 
+    #[cfg(test)]
+    pub fn with_oracle(num_threads: usize, truth: HashMap<Page, KnownObject>) -> Self {
+        use std::sync::Arc;
+
+        let mut available_workers = Vec::new();
+        let truth_ptr = Arc::new(truth);
+
+        for i in 0..num_threads {
+            let worker = WorkerThread::spawn_oracle(truth_ptr.clone(), i as u32);
+            available_workers.push(worker);
+        }
+
+        tracing::trace!(
+            "initialized oracle threadpool with {} workers",
+            available_workers.len()
+        );
+
+        Self {
+            available_workers,
+            busy_workers: Vec::with_capacity(num_threads),
+            pending_extract_shared: HashMap::new(),
+            queue: Vec::with_capacity(num_threads),
+            classification_futures: FuturesUnordered::new(),
+            extraction_futures: FuturesUnordered::new(),
+        }
+    }
+
     pub fn poll_draining(&mut self) -> Vec<JobResult> {
         let mut total_results = vec![];
 

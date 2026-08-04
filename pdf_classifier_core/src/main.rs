@@ -45,17 +45,21 @@ mod constants;
 mod constraints;
 mod context;
 mod ffi;
+#[cfg(not(test))]
+mod generated;
+#[cfg(test)]
+#[path = "test_schema/mod.rs"]
 mod generated;
 mod inferencer;
 mod obj_list;
 mod page;
+mod page_lock;
 mod result_map;
 mod score;
 mod stream;
 #[cfg(test)]
 mod tests;
 mod threading;
-mod page_lock; 
 
 use crate::{
     classifiers::{ClassificationError, Classifier},
