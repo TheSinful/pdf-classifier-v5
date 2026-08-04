@@ -51,12 +51,12 @@ mod bridge {
 
         fn extract_shared_payload(r: &UniquePtr<OpaqueResult>) -> Result<UniquePtr<SharedData>>;
         fn extract_error_result(r: &UniquePtr<OpaqueResult>) -> Result<&CxxString>;
-        fn get_result_status(r: &UniquePtr<OpaqueResult>) -> i32;
+        fn get_result_status(r: &UniquePtr<OpaqueResult>) -> Result<i32>;
         fn extract_string_payload(r: &UniquePtr<OpaqueResult>) -> Result<&CxxString>;
 
-        fn drop_ctx(o_ctx: &UniquePtr<OpaqueCtx>) -> ();
-        fn drop_doc(o_ctx: &UniquePtr<OpaqueCtx>, o_doc: &UniquePtr<OpaqueDoc>) -> ();
-        fn drop_result(f: &UniquePtr<OpaqueResult>) -> ();
+        fn drop_ctx(o_ctx: &UniquePtr<OpaqueCtx>) -> Result<()>;
+        fn drop_doc(o_ctx: &UniquePtr<OpaqueCtx>, o_doc: &UniquePtr<OpaqueDoc>) -> Result<()>;
+        fn drop_result(f: &UniquePtr<OpaqueResult>) -> Result<()>;
     }
 }
 
@@ -64,6 +64,17 @@ mod bridge {
 pub struct OkUserResult<T> {
     inner: UniquePtr<bridge::OpaqueResult>,
     _data: PhantomData<T>,
+}
+
+#[cfg(test)]
+impl<T> OkUserResult<T> {
+    #[expect(dead_code, reason = "used within test oracle thread")]
+    pub fn fake() -> Self {
+        Self {
+            inner: UniquePtr::null(),
+            _data: PhantomData,
+        }
+    }
 }
 
 impl<T> Debug for OkUserResult<T> {
@@ -77,13 +88,31 @@ impl<T> Debug for OkUserResult<T> {
 
 pub struct FailUserResult {
     inner: UniquePtr<bridge::OpaqueResult>,
+    #[cfg(test)]
+    fake_rsn: Option<String>,
+}
+
+#[cfg(test)]
+impl FailUserResult {
+    #[expect(dead_code, reason = "used within test oracle thread")]
+    pub fn fake(fake_rsn: String) -> Self {
+        Self {
+            inner: UniquePtr::null(),
+            fake_rsn: Some(fake_rsn),
+        }
+    }
 }
 
 impl Debug for FailUserResult {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("FailUserResult")
-            .field("err", &self.extract_fail_rsn())
-            .finish()
+        let mut dbg = f.debug_struct("FailUserResult");
+
+        dbg.field("err", &self.extract_fail_rsn());
+
+        #[cfg(test)]
+        dbg.field("fake_fail_rsn", &self.fake_rsn);
+
+        dbg.finish()
     }
 }
 
@@ -153,13 +182,15 @@ unsafe impl<T> Send for UserResult<T> {}
 
 impl<T> Drop for OkUserResult<T> {
     fn drop(&mut self) {
-        bridge::drop_result(&self.inner);
+        bridge::drop_result(&self.inner)
+            .unwrap_or_else(|e| panic!("Attempted to drop result of nullptr! ({})", e.what()));
     }
 }
 
 impl Drop for FailUserResult {
     fn drop(&mut self) {
-        bridge::drop_result(&self.inner);
+        bridge::drop_result(&self.inner)
+            .unwrap_or_else(|e| panic!("Attempted to drop result of nullptr! ({})", e.what()));
     }
 }
 
@@ -173,6 +204,11 @@ impl<T> Deref for OkUserResult<T> {
 
 impl OkUserResult<Shared> {
     pub fn extract_payload_as_shared(&self) -> Shared {
+        #[cfg(test)]
+        if self.is_null() {
+            return Shared(UniquePtr::null());
+        }
+
         let raw_shared = bridge::extract_shared_payload(&self)
             .expect("Attempted to access payload on a FAIL result.");
         Shared(raw_shared)
@@ -181,6 +217,11 @@ impl OkUserResult<Shared> {
 
 impl OkUserResult<CxxString> {
     pub fn extract_payload_as_string(&self) -> String {
+        #[cfg(test)]
+        if self.is_null() {
+            return "test_payload".to_string();
+        }
+
         match bridge::extract_string_payload(&self.inner) {
             Ok(_str) => return _str.to_string_lossy().to_string(),
             Err(e) => panic!("Failed to extract string payload {}", e.what()),
@@ -190,6 +231,11 @@ impl OkUserResult<CxxString> {
 
 impl FailUserResult {
     pub fn extract_fail_rsn(&self) -> &str {
+        #[cfg(test)]
+        if let Some(r) = &self.fake_rsn {
+            return r;
+        }
+
         match bridge::extract_error_result(&self.inner) {
             Ok(_str) => _str
                 .to_str()
@@ -220,7 +266,12 @@ impl Deref for FzContext {
 
 impl Drop for FzContext {
     fn drop(&mut self) {
-        bridge::drop_ctx(&self.0);
+        bridge::drop_ctx(&self.0).unwrap_or_else(|e| {
+            panic!(
+                "Attempted to drop nullptr as fz_context ptr! ({})",
+                e.what()
+            )
+        });
     }
 }
 pub struct Document<'ctx> {
@@ -230,7 +281,12 @@ pub struct Document<'ctx> {
 
 impl<'ctx> Drop for Document<'ctx> {
     fn drop(&mut self) {
-        bridge::drop_doc(self._ctx, &self.inner);
+        bridge::drop_doc(self._ctx, &self.inner).unwrap_or_else(|e| {
+            panic!(
+                "Attempted to drop nullptr as fz_document ptr! ({})",
+                e.what()
+            )
+        });
     }
 }
 
@@ -287,7 +343,8 @@ pub unsafe fn classify(
         "Failed to call classify! returned null data!"
     );
 
-    let status = bridge::get_result_status(&call);
+    let status = bridge::get_result_status(&call)
+        .unwrap_or_else(|e| panic!("Failed to get result status: {}", e));
 
     if status == 0 {
         UserResult::Ok(OkUserResult {
@@ -295,7 +352,11 @@ pub unsafe fn classify(
             _data: PhantomData::default(),
         })
     } else {
-        UserResult::Fail(FailUserResult { inner: call })
+        UserResult::Fail(FailUserResult {
+            inner: call,
+            #[cfg(test)]
+            fake_rsn: None,
+        })
     }
 }
 
@@ -316,7 +377,8 @@ pub unsafe fn extract(
         "Failed to call extract! returned null data!"
     );
 
-    let status = bridge::get_result_status(&call);
+    let status = bridge::get_result_status(&call)
+        .unwrap_or_else(|e| panic!("Failed to get result status: {}", e));
 
     if status == 0 {
         UserResult::Ok(OkUserResult {
@@ -324,6 +386,10 @@ pub unsafe fn extract(
             _data: PhantomData::default(),
         })
     } else {
-        UserResult::Fail(FailUserResult { inner: call })
+        UserResult::Fail(FailUserResult {
+            inner: call,
+            #[cfg(test)]
+            fake_rsn: None,
+        })
     }
 }
