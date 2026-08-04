@@ -39,15 +39,16 @@ std::unique_ptr<OpaqueDoc> create_new_doc(const std::unique_ptr<OpaqueCtx> &o_ct
 
 inline fz_context *cast_opaque_ctx(const std::unique_ptr<OpaqueCtx> &o_ctx);
 inline fz_document *cast_opaque_doc(const std::unique_ptr<OpaqueDoc> &o_doc);
+inline Result *cast_opaque_result(const std::unique_ptr<OpaqueResult> &o_res);
 
-void drop_ctx(const std::unique_ptr<OpaqueCtx> &o_ctx) noexcept;
-void drop_doc(const std::unique_ptr<OpaqueCtx> &o_ctx, const std::unique_ptr<OpaqueDoc> &o_doc) noexcept;
-void drop_result(const std::unique_ptr<OpaqueResult> &r) noexcept;
+void drop_ctx(const std::unique_ptr<OpaqueCtx> &o_ctx);
+void drop_doc(const std::unique_ptr<OpaqueCtx> &o_ctx, const std::unique_ptr<OpaqueDoc> &o_doc);
+void drop_result(const std::unique_ptr<OpaqueResult> &r);
 
 std::unique_ptr<SharedData> extract_shared_payload(const std::unique_ptr<OpaqueResult> &r);
 const std::string &extract_error_result(const std::unique_ptr<OpaqueResult> &r);
-const std::string &extract_string_payload(const std::unique_ptr<OpaqueResult> &r); 
-int get_result_status(const std::unique_ptr<OpaqueResult> &r) noexcept;
+const std::string &extract_string_payload(const std::unique_ptr<OpaqueResult> &r);
+int get_result_status(const std::unique_ptr<OpaqueResult> &r);
 
 std::unique_ptr<OpaqueResult> call_classify(const std::unique_ptr<OpaqueCtx> &o_ctx,
                                             const std::unique_ptr<OpaqueDoc> &o_doc, const std::string &obj, uint32_t page);
