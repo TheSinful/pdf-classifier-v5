@@ -19,6 +19,7 @@ target_link_libraries(pdf_classifier_lib
     PUBLIC mupdf::mupdf nlohmann_json::nlohmann_json)
 
 target_include_directories(pdf_classifier_lib PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     $<INSTALL_INTERFACE:include>
     ${CMAKE_INSTALL_PREFIX}/include) # for <shared/result.h>
@@ -30,7 +31,7 @@ target_sources(pdf_classifier_lib
 
 install(TARGETS pdf_classifier_lib
     EXPORT pdf_classifier_libTargets
-    FILE_SET HEADERS DESTINATION include/pdf_classifier
+    FILE_SET HEADERS DESTINATION include/pdf_classifier_lib
     ARCHIVE DESTINATION lib)
 
 option(PDF_CLASSIFIER_LIB_TESTS "Build pdf_classifier_lib tests" ON)
