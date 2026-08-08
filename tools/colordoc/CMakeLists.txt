@@ -2,19 +2,12 @@ cmake_minimum_required(VERSION 4.2.0)
 project(colordoc)
 
 find_package(mupdf REQUIRED)
-
-include(FetchContent)
-
-FetchContent_Declare(nlohmann_json
-    GIT_REPOSITORY "https://github.com/nlohmann/json"
-    GIT_TAG "v3.12.0"
-)
-
-FetchContent_MakeAvailable(nlohmann_json)
-
 find_package(nlohmann_json 3.12.0 REQUIRED HINTS "${CMAKE_BINARY_DIR}/_deps/nlohmann_json-build")
 
 set(CMAKE_CXX_STANDARD 20)
+
+set(PDF_CLASSIFIER_LIB_TESTS OFF CACHE BOOL "" FORCE)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../pdf_classifier_lib pdf_classifier_lib_build) # ! temp
 
 # The target name is fixed: pdf_classifier_core/build.rs links
 # `classifier_intermediary` out of ${CLASSIFIER_BUILD_DIR}/lib.

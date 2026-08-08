@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <mupdf/fitz.h>
 #include <shared/result.h>
+#include <pdf_classifier_lib/object.hpp>
 
 /// The colordoc schema, mirroring the shape of the reference project in
 /// `examples/`:
@@ -17,14 +18,34 @@
 /// disagreement with the ground truth emitted by `generate_doc.py` is an engine
 /// bug rather than a classification ambiguity.
 
-Result* classify_section(uint32_t page, fz_context* ctx, fz_document* doc);
-Result* extract_section(uint32_t page, fz_context* ctx, fz_document* doc, void* shared);
+class ColorObject : public Object
+{
+public:
+    ColorObject(uint32_t page, Rgb expected, const char *name)
+        : Object(page), expected_(expected), name_(name) {}
 
-Result* classify_subsection(uint32_t page, fz_context* ctx, fz_document* doc);
-Result* extract_subsection(uint32_t page, fz_context* ctx, fz_document* doc, void* shared);
+    ClassificationResult classify(Attached &att) override;
+    ExtractionResult extract(Attached &att) override;
 
-Result* classify_figure(uint32_t page, fz_context* ctx, fz_document* doc);
-Result* extract_figure(uint32_t page, fz_context* ctx, fz_document* doc, void* shared);
+protected:
+    Rgb expected_;
+    const char *name_;
+    Rgb color_{};
+};
 
-Result* classify_caption(uint32_t page, fz_context* ctx, fz_document* doc);
-Result* extract_caption(uint32_t page, fz_context* ctx, fz_document* doc, void* shared);
+class Section : public ColorObject
+{
+    explicit Section(uint32_t page) : ColorObject(page, SECTION_COLOR, "section") {}
+};
+class SubSection : public ColorObject
+{
+    explicit SubSection(uint32_t page) : ColorObject(page, SUBSECTION_COLOR, "subsection") {}
+};
+class Figure : public ColorObject
+{
+    explicit Figure(uint32_t page) : ColorObject(page, FIGURE_COLOR, "figure") {}
+};
+class Caption : public ColorObject
+{
+    explicit Caption(uint32_t page) : ColorObject(page, CAPTION_COLOR, "caption") {}
+};
