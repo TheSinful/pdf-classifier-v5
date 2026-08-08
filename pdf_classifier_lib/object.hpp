@@ -16,7 +16,8 @@ private:
 
 public:
     template <class Owned, class New, class... Args>
-    typename Owned::element_type *allocate(New new_fn, Args &&...args)
+    typename Owned::element_type *
+    allocate(New new_fn, Args &&...args)
     {
         auto owned = std::make_unique<Owned>(
             Owned::make(ctx, new_fn, std::forward<Args>(args)...));
@@ -75,34 +76,39 @@ private:
     int page_num_ = 0;
 };
 
-#define DEFINE_OBJECT(name, Type)                                                           \
-                                                                                            \
-    void deleter_##Type(void *p) noexcept                                                   \
-    {                                                                                       \
-        delete static_cast<Type *>(p);                                                      \
-    }                                                                                       \
-                                                                                            \
-    Result *classify_##name(uint32_t page_num, fz_context *ctx,                             \
-                            fz_document *doc)                                               \
-    {                                                                                       \
-        auto obj = std::make_unique<Type>(page_num);                                        \
-        {                                                                                   \
-            Attached att(ctx, doc, page_num);                                               \
-            ClassificationResult out = obj->classify(att);                                  \
-            if (!out.is_ok())                                                               \
-                return Result::fail(out.failure());                                         \
-        }                                                                                   \
-        return Result::ok(obj.release(), &deleter_##Type);                                  \
-    }                                                                                       \
-                                                                                            \
-    Result *extract_##name(uint32_t page_num, fz_context *ctx,                              \
-                           fz_document *doc, void *shared)                                  \
-    {                                                                                       \
-        Type *obj = static_cast<Type *>(shared);                                            \
-        Attached att(ctx, doc, page_num);                                                   \
-        ExtractionResult out = obj->extract(att);                                           \
-        if (!out.is_ok())                                                                   \
-            return Result::fail(out.failure());                                             \
-        return Result::ok(new std::string(std::move(out).take_data()), &deleter_StdString); \
-    }                                                                                       \
+#define DEFINE_OBJECT(name, Type)                                                                         \
+                                                                                                          \
+    void deleter_##Type(void *p) noexcept                                                                 \
+    {                                                                                                     \
+        delete static_cast<Type *>(p);                                                                    \
+    }                                                                                                     \
+                                                                                                          \
+    Result *classify_##name(uint32_t page_num, fz_context *ctx,                                           \
+                            fz_document *doc)                                                             \
+    {                                                                                                     \
+                                                                                                          \
+        static_assert(std::is_base_of_v<Object, Type>, "...must derive from Object");                     \
+        static_assert(std::is_constructible_v<Type, uint32_t>, "...needs a (uint32_t page) constructor"); \
+        static_assert(!std::is_abstract_v<Type>, "...must implement both classify() and extract()");      \
+                                                                                                          \
+        auto obj = std::make_unique<Type>(page_num);                                                      \
+        {                                                                                                 \
+            Attached att(ctx, doc, page_num);                                                             \
+            ClassificationResult out = obj->classify(att);                                                \
+            if (!out.is_ok())                                                                             \
+                return Result::fail(out.failure());                                                       \
+        }                                                                                                 \
+        return Result::ok(obj.release(), &deleter_##Type);                                                \
+    }                                                                                                     \
+                                                                                                          \
+    Result *extract_##name(uint32_t page_num, fz_context *ctx,                                            \
+                           fz_document *doc, void *shared)                                                \
+    {                                                                                                     \
+        Type *obj = static_cast<Type *>(shared);                                                          \
+        Attached att(ctx, doc, page_num);                                                                 \
+        ExtractionResult out = obj->extract(att);                                                         \
+        if (!out.is_ok())                                                                                 \
+            return Result::fail(out.failure());                                                           \
+        return Result::ok(new std::string(std::move(out).take_data()), &deleter_StdString);               \
+    }                                                                                                     \
     static_assert(true, "")
