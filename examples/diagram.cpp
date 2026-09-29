@@ -1,4 +1,5 @@
 #include "diagram.hpp"
+#include <format>
 #include <memory>
 #include <regex>
 

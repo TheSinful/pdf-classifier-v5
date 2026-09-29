@@ -2,16 +2,21 @@ cmake_minimum_required(VERSION 4.2.0)
 project(my_project) # changeable
 
 find_package(mupdf REQUIRED)
-find_package(nlohmann_json 3.12.0 REQUIRED HINTS "${CMAKE_BINARY_DIR}/_deps/nlohmann_json-build")
 
 set(CMAKE_CXX_STANDARD 20)
 
 set(PDF_CLASSIFIER_LIB_TESTS OFF CACHE BOOL "" FORCE)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../pdf_classifier_lib pdf_classifier_lib_build) # ! temp 
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../pdf_classifier_lib pdf_classifier_lib_build) # ! temp
 
-add_library(classifier_intermediary STATIC chapter.cpp subchapter.cpp diagram.cpp table.cpp) # Insert .cpp files here 
+# pdf_classifier_lib fetches nlohmann_json, so it can only be found after the
+# add_subdirectory above. Its source dir is set in the lib's scope, not this one.
+find_package(nlohmann_json 3.12.0 REQUIRED HINTS "${CMAKE_BINARY_DIR}/_deps/nlohmann_json-build")
+include(FetchContent)
+FetchContent_GetProperties(nlohmann_json)
 
-target_link_libraries(classifier_intermediary PRIVATE mupdf::mupdf PUBLIC nlohmann_json::nlohmann_json)
+add_library(classifier_intermediary STATIC chapter.cpp subchapter.cpp diagram.cpp table.cpp) # Insert .cpp files here
+
+target_link_libraries(classifier_intermediary PRIVATE mupdf::mupdf PUBLIC pdf_classifier_lib nlohmann_json::nlohmann_json)
 
 target_include_directories(classifier_intermediary PRIVATE
     ${CLASSIFIER_INCLUDE_DIR} # provided during build via build.py 

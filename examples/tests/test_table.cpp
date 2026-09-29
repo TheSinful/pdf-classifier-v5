@@ -3,6 +3,7 @@
 #endif
 
 #include "table.hpp"
+#include <format>
 #include <filesystem>
 #include <fstream>
 #include <gtest/gtest.h>

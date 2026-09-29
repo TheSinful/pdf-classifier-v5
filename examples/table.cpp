@@ -1,4 +1,5 @@
 #include "table.hpp"
+#include <format>
 #include <array>
 #include <iostream>
 #include <regex>
