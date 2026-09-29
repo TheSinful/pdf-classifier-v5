@@ -2,22 +2,14 @@
 #error "TEST_PDF_PATH was not defined!"
 #endif
 
-#include "object.hpp"
 #include <filesystem>
 #include <gtest/gtest.h>
 #include <mupdf/fitz.h>
+#include <pdf_classifier_lib/object.hpp>
 
-// Minimal concrete subclass of Object<true, true> that exposes
-// the protected text members for direct inspection.
-// The new Object<> template does all work (extraction + compression)
-// in the constructor, so no separate initialize() call is needed.
-class TestableObject : public Object<true, true> {
-public:
-  using Object::Object;
-
-  const std::vector<PdfText>& get_extracted_text() const { return extracted_text; }
-  const std::string& get_compressed_text() const { return compressed_text; }
-};
+// The Object<true, true> constructor used to load the page and extract and
+// compress its text. That now lives in pdf_classifier_lib: Attached loads the
+// page, Attached::extract_text() extracts, and compress_text() compresses.
 
 class ObjectFixture : public ::testing::Test {
 protected:
@@ -56,8 +48,8 @@ protected:
 // Construction must not throw and the page must be loaded.
 TEST_F(ObjectFixture, TestObjectInitialization) {
   EXPECT_NO_THROW({
-    TestableObject obj(ctx, doc, 0);
-    EXPECT_FALSE(obj.get_extracted_text().empty()) << "Object should have extracted text after construction";
+    Attached att(ctx, doc, 0);
+    EXPECT_FALSE(att.extract_text().empty()) << "Object should have extracted text after construction";
   });
 }
 
@@ -66,8 +58,8 @@ TEST_F(ObjectFixture, TestObjectInitialization) {
 // Also preserves the spot-check for the specific string found on page 0 of the
 // original test document.
 TEST_F(ObjectFixture, TestTextExtraction) {
-  TestableObject obj(ctx, doc, 0);
-  const auto& entries = obj.get_extracted_text();
+  Attached att(ctx, doc, 0);
+  const std::vector<PdfText> entries = att.extract_text();
 
   EXPECT_FALSE(entries.empty()) << "No text was extracted from page 0";
 
@@ -94,6 +86,7 @@ TEST_F(ObjectFixture, TestTextExtraction) {
 // now-removed to_png() and is_blank_page() tests which have no counterpart
 // in the refactored Object<> template).
 TEST_F(ObjectFixture, TestTextCompression) {
-  TestableObject obj(ctx, doc, 0);
-  EXPECT_FALSE(obj.get_compressed_text().empty()) << "Compressed text should be non-empty after construction on page 0";
+  Attached att(ctx, doc, 0);
+  EXPECT_FALSE(compress_text(att.extract_text()).empty())
+      << "Compressed text should be non-empty after construction on page 0";
 }
