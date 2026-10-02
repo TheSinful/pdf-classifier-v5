@@ -1,4 +1,5 @@
 #include "color_page.hpp"
+#include <format>
 #include <cstdlib>
 
 int channel_delta(uint8_t a, uint8_t b) { return std::abs(static_cast<int>(a) - static_cast<int>(b)); }

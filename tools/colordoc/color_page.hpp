@@ -1,7 +1,7 @@
 #pragma once
 
 #include "palette.hpp"
-#include "util.hpp"
+#include <pdf_classifier_lib/util.hpp>
 #include <cstdint>
 #include <mupdf/fitz.h>
 #include <shared/result.h>

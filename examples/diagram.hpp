@@ -1,25 +1,31 @@
 #pragma once
 
-#include "object.hpp"
-#include "util.hpp"
 #include <mupdf/fitz.h>
+#include <pdf_classifier_lib/object.hpp>
+#include <pdf_classifier_lib/result.hpp>
+#include <regex>
 #include <shared/result.h>
 
-class Diagram : public Object<true, true> {
-public:
-  Diagram(fz_context* ctx, fz_document* doc, uint32_t page) : Object(ctx, doc, page) {}
-
-  Result* contains_valid_chapter_text();
-  Result* contains_valid_figure_text();
-  Result* contains_image();
-
-  int fig_num;
-  std::string caption;
-};
-
+inline const std::regex FIG_NUM_PATTERN(R"(Fig\s+(\d+):\s*(.+))");
 inline constexpr int EXPECTED_UPPER_CHAPTER = 0;
 inline constexpr int EXPECTED_LOWER_CHAPTER = 1;
 
-void deleter_Diagram(void* p);
-Result* classify_diagram(uint32_t page, fz_context* ctx, fz_document* doc);
-Result* extract_diagram(uint32_t page, fz_context* ctx, fz_document* doc, void* shared);
+class Diagram : public ObjectWith<TextExtraction> {
+public:
+  explicit Diagram(int page, Attached& att) : ObjectWith(page, att) {}
+
+  ClassificationResult classify(Attached& att) override;
+  ExtractionResult extract(Attached& att) override;
+
+  ClassificationResult evaluate_capability_failures(const std::vector<CapabilityFailure> &failures) override {
+    return ClassificationResult::fail(failures.front().reason); 
+  }
+
+  int fig_num = 0;
+  std::string caption{"uninitialized"};
+
+private:
+  ClassificationResult contains_valid_chapter_text();
+  ClassificationResult contains_valid_figure_text();
+  ClassificationResult contains_image(Attached& att);
+};

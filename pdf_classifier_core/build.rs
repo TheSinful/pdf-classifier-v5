@@ -24,7 +24,7 @@ fn main() {
 
     let mut build = cxx_build::bridges(&["src/ffi.rs"]);
     build
-        .flag_if_supported("/std:c++20")
+        .std("c++20") // /std:c++20 on MSVC, -std=c++20 on gcc/clang
         .file("../pdf_classifier_ffi/ffi.cpp")
         .include(format!("{}/include", build_dir))
         .include("../pdf_classifier_ffi")
@@ -38,7 +38,16 @@ fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();
     println!("cargo:rustc-link-search=native={}", out_dir);
 
-    println!("cargo:rustc-link-lib=static=libmupdf"); // may be an issue in the future see: https://github.com/TheSinful/pdf-classifier-v5/issues/1,  
     println!("cargo:rustc-link-lib=static=bindings");
     println!("cargo:rustc-link-lib=static=classifier_intermediary");
+
+    // MuPDF goes last: GNU ld only resolves symbols against libraries that come
+    // after the code referencing them (MSVC doesn't care about order).
+    if env::var("CARGO_CFG_TARGET_OS").unwrap() == "windows" {
+        println!("cargo:rustc-link-lib=static=libmupdf"); // may be an issue in the future see: https://github.com/TheSinful/pdf-classifier-v5/issues/1,
+    } else {
+        // `make install-libs` produces libmupdf.a plus libmupdf-third.a (bundled deps).
+        println!("cargo:rustc-link-lib=static=mupdf");
+        println!("cargo:rustc-link-lib=static=mupdf-third");
+    }
 }

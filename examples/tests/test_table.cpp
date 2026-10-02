@@ -9,22 +9,23 @@
 #include <gtest/gtest.h>
 #include <mupdf/fitz.h>
 
-static bool result_is_ok(Result* res) {
-  bool ok = (res->type == Result::Type::OK);
-  delete res;
-  return ok;
-}
-
 // Return the text stored in a cell, or "" if the unique_ptr is null.
 static std::string cell_text(const TableDataCell& cell) { return (cell.text != nullptr) ? *cell.text : ""; }
 static std::string boundary_debug(fz_rect boundary) {
   return std::format("[({},{}),({}, {})]", boundary.x0, boundary.y0, boundary.x1, boundary.y1);
 }
 
+// Every TableCellKind alternative derives from TableDataCell; this reads that
+// shared part whichever alternative a cell is (KEY and NUM_OFF cells are not
+// plain TableDataCells, so std::get<TableDataCell> throws on them).
+static const TableDataCell& base_cell(const TableCellKind& c) {
+  return std::visit([](const auto& v) -> const TableDataCell& { return v; }, c);
+}
+
 // Find the first cell in a flat cell list matching (row_num, column).
 static const TableDataCell* find_cell(const std::vector<TableCellKind>& cells, int row, CellColumn col) {
   for (const TableCellKind& c : cells) {
-    const TableDataCell& v = std::get<TableDataCell>(c);
+    const TableDataCell& v = base_cell(c);
     if (v.row_num == row && v.column == static_cast<int>(col))
       return &v;
   }
@@ -68,8 +69,9 @@ protected:
 // Verifies that construction succeeds and page bounds are acceptable.
 TEST_F(DataTableFixture, TestValidPageBounds) {
   try {
-    DataTable dt(ctx, doc, 1235);
-    EXPECT_TRUE(result_is_ok(dt.valid_page_bounds())) << "Page 1235 should have valid page bounds";
+    Attached att(ctx, doc, 1235);
+    DataTable dt(1235, att);
+    EXPECT_TRUE(dt.valid_page_bounds().is_ok()) << "Page 1235 should have valid page bounds";
   } catch (const std::exception& e) {
     FAIL() << "DataTable construction or validation threw: " << e.what();
   }
@@ -79,7 +81,8 @@ TEST_F(DataTableFixture, TestValidPageBounds) {
 // The new equivalent is extract_cells().  We verify a non-empty result.
 TEST_F(DataTableFixture, TestExtractCellsNonEmpty) {
   try {
-    DataTable dt(ctx, doc, 1235);
+    Attached att(ctx, doc, 1235);
+    DataTable dt(1235, att);
     auto cells = dt.extract_cells();
     EXPECT_FALSE(cells.empty()) << "extract_cells() on page 1235 should return at least one cell";
     GTEST_LOG_(INFO) << "Extracted " << cells.size() << " cells from page 1235";
@@ -91,7 +94,8 @@ TEST_F(DataTableFixture, TestExtractCellsNonEmpty) {
 // Old test: TestTableInitialization — verifies all seven columns are represented.
 TEST_F(DataTableFixture, TestExtractCellsCoverAllColumns) {
   try {
-    DataTable dt(ctx, doc, 1235);
+    Attached att(ctx, doc, 1235);
+    DataTable dt(1235, att);
     auto cells = dt.extract_cells();
     ASSERT_FALSE(cells.empty());
 
@@ -135,7 +139,8 @@ TEST_F(DataTableFixture, TestExtractCellsDetailedData) {
   };
 
   try {
-    DataTable dt(ctx, doc, 1248);
+    Attached att(ctx, doc, 1248);
+    DataTable dt(1248, att);
     auto cells = dt.extract_cells();
     ASSERT_FALSE(cells.empty()) << "Expected cells on page 1248";
     GTEST_LOG_(INFO) << "Extracted " << cells.size() << " cells from page 1248";
@@ -154,7 +159,7 @@ TEST_F(DataTableFixture, TestExtractCellsDetailedData) {
       const TableDataCell* item = find_cell(cells, exp.row, ITEM_NAME);
       if (item) {
         EXPECT_EQ(cell_text(*item), exp.item_name)
-            << "Item name mismatch at row " << exp.row << " with boundary " << boundary_debug(nato->boundary);
+            << "Item name mismatch at row " << exp.row << " with boundary " << boundary_debug(item->boundary);
       } else {
         GTEST_LOG_(INFO) << "No ITEM_NAME cell for row " << exp.row;
       }
@@ -162,7 +167,7 @@ TEST_F(DataTableFixture, TestExtractCellsDetailedData) {
       const TableDataCell* part = find_cell(cells, exp.row, PART_NUM);
       if (part) {
         EXPECT_EQ(cell_text(*part), exp.part_num)
-            << "Part number mismatch at row " << exp.row << " with boundary " << boundary_debug(nato->boundary);
+            << "Part number mismatch at row " << exp.row << " with boundary " << boundary_debug(part->boundary);
       } else {
         GTEST_LOG_(INFO) << "No PART_NUM cell for row " << exp.row;
       }
@@ -178,7 +183,8 @@ TEST_F(DataTableFixture, TestDumpCellBoundaries) {
   constexpr int dump_page = 1248;
   const std::string output_path = TEST_BOUNDARY_OUTPUT_PATH;
 
-  DataTable dt(ctx, doc, dump_page);
+  Attached att(ctx, doc, dump_page);
+  DataTable dt(dump_page, att);
   auto cells = dt.extract_cells();
   ASSERT_FALSE(cells.empty()) << "No cells found on page " << dump_page;
 
@@ -195,7 +201,7 @@ TEST_F(DataTableFixture, TestDumpCellBoundaries) {
 
   for (size_t i = 0; i < cells.size(); ++i) {
     const auto& c = cells[i];
-    const TableDataCell& v = std::get<TableDataCell>(c);
+    const TableDataCell& v = base_cell(c);
 
     out << std::format("    {{\"row\": {}, \"col\": {}, \"boundary\": "
                        "{{\"x0\": {:.2f}, \"y0\": {:.2f}, \"x1\": {:.2f}, \"y1\": {:.2f}}}}}",

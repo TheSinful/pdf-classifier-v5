@@ -1,7 +1,9 @@
 #pragma once
 
 #include "object.hpp"
+#include "result.hpp"
 #include "util.hpp"
+#include "wrappers.hpp"
 #include <memory>
 #include <mupdf/fitz.h>
 #include <shared/result.h>
@@ -68,12 +70,15 @@ inline void to_json(nlohmann::json& j, const TableCellKind& c) {
 
 enum CellColumn { KEY = 1, DMC_ARMY = 2, NATO_STOCK_NUM = 3, ITEM_NAME = 4, PART_NUM = 5, NUM_OFF = 6, ANNOTATION = 7 };
 
-class DataTable : public Object<true, true> {
+class DataTable : public ObjectWith<TextExtraction> {
 public:
-  DataTable(fz_context* ctx, fz_document* doc, uint32_t page);
-  ~DataTable();
+  explicit DataTable(int page, Attached& att);
 
-  Result* valid_page_bounds();
+  ClassificationResult classify(Attached& att) override;
+  ExtractionResult extract(Attached& att) override;
+  ClassificationResult evaluate_capability_failures(const std::vector<CapabilityFailure>& failures) override;
+
+  ClassificationResult valid_page_bounds();
   std::vector<TableCellKind> extract_cells();
 
 private:
@@ -87,13 +92,14 @@ private:
   bool is_vertical_line_filled(int x, int start_y, int end_y);
   bool is_white_pixel(unsigned char* pixel);
   bool row_has_content(int y, int start_x, int end_x);
-  std::string extract_text_from_cell(const TableDataCell& cell);
+  std::string extract_text_from_cell(const TableDataCell& cell) const;
   std::string remove_all_whitespace(std::string& str);
   std::string trim_whitespace(const std::string& str);
   std::string remove_first_and_last_whitespace(std::string& extracted_text);
   fz_rect scale_rect(fz_rect original, float factor);
 
-  fz_pixmap* pixmap;
+  FzPixmap pixmap;
+  FzSTextPage stext; 
   fz_rect page_scoped_bounds;
   fz_rect page_bounds;
   unsigned char* samples;

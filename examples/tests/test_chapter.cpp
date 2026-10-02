@@ -3,6 +3,7 @@
 #endif
 
 #include "chapter.hpp"
+#include "classify_helpers.hpp"
 #include <filesystem>
 #include <gtest/gtest.h>
 #include <mupdf/fitz.h>
@@ -45,23 +46,24 @@ protected:
   }
 };
 
-// The text checks are private and read the text classify() extracts, so they
-// are exercised through classify(), and the chapter number through the
-// payload extract() produces rather than the member it is stored in.
+// The text checks are private and read the text the TextExtraction capability
+// provides, so they are exercised through classify_like_engine() (capabilities,
+// then classify()), and the chapter number through the payload extract()
+// produces rather than the member it is stored in.
 
 // Old test: TestChapterValidation / ValidateExtractedChapterNumber
 // Page 1230 is the chapter page used by the original suite.
 TEST_F(ChapterFixture, TestContainsValidChapterText) {
-  Chapter ch(1230);
   Attached att(ctx, doc, 1230);
-  ClassificationResult res = ch.classify(att);
+  Chapter ch(1230, att);
+  ClassificationResult res = classify_like_engine(ch, att);
   EXPECT_TRUE(res.is_ok()) << "Page 1230 should pass chapter text validation: " << (res.is_ok() ? "" : res.failure());
 }
 
 TEST_F(ChapterFixture, TestExtractChapterNumber) {
-  Chapter ch(1230);
   Attached att(ctx, doc, 1230);
-  ASSERT_TRUE(ch.classify(att).is_ok()) << "classify() (which extracts the chapter number) should succeed on page 1230";
+  Chapter ch(1230, att);
+  ASSERT_TRUE(classify_like_engine(ch, att).is_ok()) << "classify() (which extracts the chapter number) should succeed on page 1230";
 
   ExtractionResult extracted = ch.extract(att);
   ASSERT_TRUE(extracted.is_ok()) << "extract() should succeed on page 1230";
@@ -71,9 +73,9 @@ TEST_F(ChapterFixture, TestExtractChapterNumber) {
 // Old test: TestFailureOnSubChapterPage
 // Page 1233 is a sub-chapter page; classifying it as a chapter should fail.
 TEST_F(ChapterFixture, TestFailureOnSubChapterPage) {
-  Chapter ch(1233);
   Attached att(ctx, doc, 1233);
-  EXPECT_FALSE(ch.classify(att).is_ok()) << "Page 1233 is a subchapter page — chapter text validation should fail";
+  Chapter ch(1233, att);
+  EXPECT_FALSE(classify_like_engine(ch, att).is_ok()) << "Page 1233 is a subchapter page — chapter text validation should fail";
 }
 
 // Old test: ValidateExpectedSubChapters / TestConstructSubChapters (page 235)

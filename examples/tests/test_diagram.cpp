@@ -2,16 +2,15 @@
 #error "TEST_PDF_PATH was not defined!"
 #endif
 
+#include "classify_helpers.hpp"
 #include "diagram.hpp"
 #include <filesystem>
 #include <gtest/gtest.h>
 #include <mupdf/fitz.h>
 
-static bool result_is_ok(Result* res) {
-  bool ok = (res->type == Result::Type::OK);
-  delete res;
-  return ok;
-}
+// Generated in diagram.cpp by DEFINE_OBJECT(diagram, Diagram). Declared here
+// because no header declares the DEFINE_OBJECT shims yet.
+Result* classify_diagram(uint32_t page_num, fz_context* ctx, fz_document* doc);
 
 class DiagramFixture : public ::testing::Test {
 protected:
@@ -47,31 +46,35 @@ protected:
 };
 
 // Old test: TestImagesExist
-// Page 1247 is the diagram page used by the original suite.
+// Page 1247 is the diagram page used by the original suite. Diagram's image
+// check is now private and wraps Attached::has_image(), so that is what's tested.
 TEST_F(DiagramFixture, TestContainsImage) {
   try {
-    Diagram d(ctx, doc, 1247);
-    EXPECT_TRUE(result_is_ok(d.contains_image())) << "Page 1247 should contain an image";
+    Attached att(ctx, doc, 1247);
+    Diagram d(1247, att);
+    EXPECT_TRUE(att.has_image()) << "Page 1247 should contain an image";
   } catch (const std::exception& e) {
     FAIL() << "Diagram construction threw: " << e.what();
   }
 }
 
 // Old test: TestFigureText (was commented out pending OCR work)
-// The new API can still validate the regex-based figure text path.
+// The figure text check is now private, so it runs as part of classify(), after
+// the image and chapter text checks; fig_num and caption are only set if it passes.
 TEST_F(DiagramFixture, TestContainsValidFigureText) {
   try {
-    Diagram d(ctx, doc, 1247);
-    bool ok = result_is_ok(d.contains_valid_figure_text());
-    if (ok) {
+    Attached att(ctx, doc, 1247);
+    Diagram d(1247, att);
+    ClassificationResult res = classify_like_engine(d, att);
+    if (res.is_ok()) {
       EXPECT_GT(d.fig_num, 0) << "Figure number should be positive";
       EXPECT_FALSE(d.caption.empty()) << "Caption should not be empty";
       GTEST_LOG_(INFO) << "fig_num=" << d.fig_num << " caption='" << d.caption << "'";
     } else {
       // Preserve the original intent: the test was commented-out because
       // some figures use skewed text that resists regex extraction.
-      GTEST_LOG_(INFO) << "contains_valid_figure_text() failed on page 1247 "
-                          "(may need OCR for skewed caption text — same caveat as original)";
+      GTEST_LOG_(INFO) << "classify() failed on page 1247: " << res.failure()
+                       << " (may need OCR for skewed caption text — same caveat as original)";
     }
   } catch (const std::exception& e) {
     FAIL() << "Diagram construction threw: " << e.what();
@@ -82,6 +85,6 @@ TEST_F(DiagramFixture, TestContainsValidFigureText) {
 TEST_F(DiagramFixture, TestClassifyDiagramSucceeds) {
   Result* res = classify_diagram(1244, ctx, doc);
   ASSERT_NE(res, nullptr);
-  EXPECT_EQ(res->type, Result::Type::OK) << "classify_diagram() should succeed on page 1247" << res->fail_rsn;
+  EXPECT_EQ(res->type, Result::Type::OK) << "classify_diagram() should succeed on page 1244" << res->fail_rsn;
   delete res;
 }

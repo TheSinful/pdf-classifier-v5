@@ -23,10 +23,21 @@ if(WIN32)
             ${CMAKE_INSTALL_PREFIX}/include
     )
 else()
+    # MuPDF's Makefile lives in its source tree, so build there rather than in
+    # ExternalProject's (empty) binary dir. Only the libraries are needed, so the
+    # viewer and tools are skipped.
+    include(ProcessorCount)
+    ProcessorCount(MUPDF_JOBS)
+    if(MUPDF_JOBS GREATER 1)
+        math(EXPR MUPDF_JOBS "${MUPDF_JOBS} - 1")
+    else()
+        set(MUPDF_JOBS 1)
+    endif()
     ExternalProject_Add(mupdf_build
         SOURCE_DIR ${mupdf_SOURCE_DIR}
-        BUILD_COMMAND make
+        BUILD_IN_SOURCE 1
+        BUILD_COMMAND make -j${MUPDF_JOBS} libs
         CONFIGURE_COMMAND ""
-        INSTALL_COMMAND make install prefix=${CMAKE_INSTALL_PREFIX}
+        INSTALL_COMMAND make install-libs prefix=${CMAKE_INSTALL_PREFIX}
     )
 endif()

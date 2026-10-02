@@ -1,6 +1,8 @@
 #include "table.hpp"
-#include <format>
+#include "attached.hpp"
+#include "result.hpp"
 #include <array>
+#include <format>
 #include <iostream>
 #include <regex>
 #include <string_view>
@@ -21,31 +23,29 @@ inline constexpr float VALID_PAGE_BOUND_MARGIN = 2.0;
 inline constexpr std::array<std::string_view, 7> COLUMN_IDENTIFIERS = {
     "Keys", "DMC Army", "NATO stock number", "Item name", "Part No. / Dwg No.", "No. off", "Annotation (NSCM)"};
 
-DataTable::DataTable(fz_context* ctx, fz_document* doc, uint32_t page) : Object(ctx, doc, page) {
-  page_bounds = fz_bound_page(ctx, this->page);
+DataTable::DataTable(int page, Attached& att) : ObjectWith(page, att) {
+  page_bounds = fz_bound_page(att.raw_ctx(), att.raw_page());
   calc_page_scope();
 
-  pixmap = fz_new_pixmap_from_page(ctx, this->page, fz_scale(PIXMAP_SCALE, PIXMAP_SCALE), fz_device_rgb(ctx), 0);
-  if (!pixmap) {
-    throw std::runtime_error("Failed to create pixmap from page");
-  }
+  pixmap = FzPixmap::make(att.raw_ctx(), fz_new_pixmap_from_page, att.raw_page(), fz_scale(PIXMAP_SCALE, PIXMAP_SCALE),
+                          fz_device_rgb(att.raw_ctx()), 0);
 
-  samples = fz_pixmap_samples(ctx, pixmap);
-  width = fz_pixmap_width(ctx, pixmap);
-  height = fz_pixmap_height(ctx, pixmap);
-  stride = fz_pixmap_stride(ctx, pixmap);
-  components = fz_pixmap_components(ctx, pixmap);
+  fz_stext_options opts = {};
+  stext = FzSTextPage::make(att.raw_ctx(), fz_new_stext_page_from_page, att.raw_page(), &opts);
+  samples = fz_pixmap_samples(att.raw_ctx(), pixmap.get());
+  width = fz_pixmap_width(att.raw_ctx(), pixmap.get());
+  height = fz_pixmap_height(att.raw_ctx(), pixmap.get());
+  stride = fz_pixmap_stride(att.raw_ctx(), pixmap.get());
+  components = fz_pixmap_components(att.raw_ctx(), pixmap.get());
 }
 
-DataTable::~DataTable() { fz_drop_pixmap(ctx, pixmap); }
-
-Result* DataTable::valid_page_bounds() {
+ClassificationResult DataTable::valid_page_bounds() {
   // page_bounds is initialized in the constructor
   float diff = page_bounds.y1 - EXPECTED_PAGE_HEIGHT;
   if (diff <= VALID_PAGE_BOUND_MARGIN && diff >= -VALID_PAGE_BOUND_MARGIN) {
-    return Result::ok(NULL, NULL);
+    return ClassificationResult::ok();
   } else {
-    return Result::fail(std::format("page height doesn't meet expected height {}", page_bounds.y1));
+    return ClassificationResult::fail(std::format("page height doesn't meet expected height {}", page_bounds.y1));
   }
 }
 
@@ -200,52 +200,38 @@ std::string DataTable::remove_first_and_last_whitespace(std::string& extracted_t
   return extracted_text;
 }
 
-std::string DataTable::extract_text_from_cell(const TableDataCell& cell) {
+std::string DataTable::extract_text_from_cell(const TableDataCell& cell) const {
   std::string result;
-  fz_stext_page* stext = nullptr;
-  fz_stext_options opts = {0};
+  const fz_stext_page* raw_page = stext.get();
+  for (fz_stext_block* block = raw_page->first_block; block; block = block->next) {
+    if (block->type != FZ_STEXT_BLOCK_TEXT)
+      continue;
 
-  fz_try(ctx) {
-    stext = fz_new_stext_page_from_page(ctx, page, &opts);
+    for (fz_stext_line* line = block->u.t.first_line; line; line = line->next) {
+      std::string lineText;
+      bool hasCharsInBox = false;
 
-    for (fz_stext_block* block = stext->first_block; block; block = block->next) {
-      if (block->type != FZ_STEXT_BLOCK_TEXT)
-        continue;
+      // Check each character in the line
+      for (fz_stext_char* ch = line->first_char; ch; ch = ch->next) {
+        fz_rect char_bbox = fz_rect_from_quad(ch->quad);
 
-      for (fz_stext_line* line = block->u.t.first_line; line; line = line->next) {
-        std::string lineText;
-        bool hasCharsInBox = false;
-
-        // Check each character in the line
-        for (fz_stext_char* ch = line->first_char; ch; ch = ch->next) {
-          fz_rect char_bbox = fz_rect_from_quad(ch->quad);
-
-          float cx = (char_bbox.x0 + char_bbox.x1) * 0.5f;
-          float cy = (char_bbox.y0 + char_bbox.y1) * 0.5f;
-          if (cx >= cell.boundary.x0 && cx <= cell.boundary.x1 && cy >= cell.boundary.y0 && cy <= cell.boundary.y1) {
-            if (ch->c >= 32) { // Printable character
-              lineText += static_cast<char>(ch->c);
-            }
-            hasCharsInBox = true;
+        float cx = (char_bbox.x0 + char_bbox.x1) * 0.5f;
+        float cy = (char_bbox.y0 + char_bbox.y1) * 0.5f;
+        if (cx >= cell.boundary.x0 && cx <= cell.boundary.x1 && cy >= cell.boundary.y0 && cy <= cell.boundary.y1) {
+          if (ch->c >= 32) { // Printable character
+            lineText += static_cast<char>(ch->c);
           }
-        }
-
-        // Add line to result if it had characters in the box
-        if (hasCharsInBox && !lineText.empty()) {
-          if (!result.empty())
-            result += '\n';
-          result += lineText;
+          hasCharsInBox = true;
         }
       }
+
+      // Add line to result if it had characters in the box
+      if (hasCharsInBox && !lineText.empty()) {
+        if (!result.empty())
+          result += '\n';
+        result += lineText;
+      }
     }
-  }
-  fz_always(ctx) {
-    if (stext)
-      fz_drop_stext_page(ctx, stext);
-  }
-  fz_catch(ctx) {
-    const char* error_msg = fz_caught_message(ctx);
-    throw std::runtime_error("failed to extract text from cell " + std::string(error_msg));
   }
 
   if (!result.empty() && result[0] == ' ') {
@@ -398,8 +384,7 @@ bool DataTable::row_has_content(int y, int start_x, int end_x) {
 }
 
 std::vector<int> DataTable::calc_column_seperators(fz_rect scan_bounds) {
-  std::vector<int> column_separators = {}; // !
-
+  std::vector<int> column_separators = {};
   bool in_separator = false;
   int separator_start = -1;
   int pixels_scanned = 0;
@@ -495,25 +480,27 @@ bool DataTable::is_white_pixel(unsigned char* pixel) {
   return true;
 }
 
-void deleter_Datatable(void* p) { delete static_cast<DataTable*>(p); };
+ClassificationResult DataTable::classify(Attached& att) {
+  UNWRAP(this->valid_page_bounds());
 
-Result* classify_datatable(uint32_t page, fz_context* ctx, fz_document* doc) {
-  auto inst = std::make_unique<DataTable>(ctx, doc, page);
+  return ClassificationResult::ok();
+}
 
-  UNWRAP_RESULT(inst->valid_page_bounds());
-
-  return Result::ok(inst.release(), deleter_Datatable);
-};
-
-Result* extract_datatable(uint32_t page, fz_context* ctx, fz_document* doc, void* shared) {
-  DataTable* inst = static_cast<DataTable*>(shared);
+ExtractionResult DataTable::extract(Attached& att) {
 
   try {
-    std::vector<TableCellKind> cells = inst->extract_cells();
+    std::vector<TableCellKind> cells = extract_cells();
     nlohmann::json j = nlohmann::json{{"table_data", cells}};
 
-    return json_to_payload(j);
+    return ExtractionResult::ok(j);
   } catch (const std::exception& e) {
-    return Result::fail(std::format("failed to extract datatable {}", e.what()));
+    return ExtractionResult::fail(std::format("failed to extract datatable {}", e.what()));
   }
-};
+}
+
+ClassificationResult DataTable::evaluate_capability_failures(const std::vector<CapabilityFailure>& failures) {
+  return ClassificationResult::fail(
+      std::format("amalgamated page: {}, should be table but text extraction failed.", failures.front().reason));
+}
+
+DEFINE_OBJECT(datatable, DataTable);

@@ -26,7 +26,7 @@ struct PdfText
 std::vector<PdfText> extract_text(fz_context *ctx, fz_page *page, uint32_t page_num);
 int frequency_of(const std::string &substr, const std::string &within, int max_errors);
 bool has_image(fz_context *ctx, fz_page *page);
-std::string compress_text(std::vector<PdfText> extracted_text);
+std::string compress_text(std::vector<PdfText> extracted_text) noexcept;
 int levenshtein_distance(const std::string &s1, const std::string &s2);
 inline bool contains_text(const std::string &substr, const std::string &str) { return str.find(substr) != std::string::npos; }
 inline void deleter_StdString(void *ptr) { delete static_cast<std::string *>(ptr); }

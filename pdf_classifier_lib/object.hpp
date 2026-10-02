@@ -1,114 +1,119 @@
 #pragma once
 
+#include "capability.hpp"
+#include "result.hpp"
+#include "string_utils.hpp"
+#include "util.hpp"
+#include "wrappers.hpp"
+#include <concepts>
+#include <memory>
 #include <shared/result.h>
 #include <vector>
-#include <memory>
-#include "result.hpp"
-#include "wrappers.hpp"
-#include "util.hpp"
-#include "string_utils.hpp"
 
-class AttachedAllocator
-{
-private:
-    fz_context *ctx = nullptr;
-    std::vector<std::unique_ptr<FzOwnedResource>> resources;
-
+class Object {
 public:
-    template <class Owned, class New, class... Args>
-    typename Owned::element_type *
-    allocate(New new_fn, Args &&...args)
-    {
-        auto owned = std::make_unique<Owned>(
-            Owned::make(ctx, new_fn, std::forward<Args>(args)...));
+  virtual ClassificationResult classify(Attached &) = 0;
+  virtual ExtractionResult extract(Attached &) = 0;
+  virtual ~Object() = default;
 
-        auto *raw = owned->get();
-        resources.push_back(std::move(owned));
-        return raw;
-    }
-
-    AttachedAllocator(fz_context *ctx) : ctx(ctx) {}
-};
-
-class Attached
-{
-private:
-    fz_context *_ctx = nullptr;
-    fz_document *_doc = nullptr;
-    FzPage _page;
-    uint32_t _page_num = 0;
-    AttachedAllocator alloc;
-
-public:
-    explicit Attached(fz_context *ctx, fz_document *doc, uint32_t page) : _ctx(ctx), _doc(doc), _page_num(page),
-                                                                          _page(FzPage::make(ctx, fz_load_page, _doc, page)),
-                                                                          alloc(AttachedAllocator(ctx)) {}
-
-    fz_context *raw_ctx() const { return _ctx; }
-    fz_document *raw_doc() const { return _doc; }
-    fz_page *raw_page() const { return _page.get(); }
-    uint32_t page_num() const { return _page_num; }
-
-    bool has_image() const { return ::has_image(raw_ctx(), raw_page()); }
-    std::vector<PdfText> extract_text() const { return ::extract_text(raw_ctx(), raw_page(), page_num()); }
-
-    /// Create a MuPDF resource owned by this call. The context is injected, the
-    /// call is guarded, and the resource is dropped when this Attached dies.
-    template <class Owned, class New, class... Args>
-    typename Owned::element_type *allocate(New new_fn, Args &&...args)
-    {
-        return alloc.allocate<Owned>(new_fn, std::forward<Args>(args)...);
-    }
-};
-
-class Object
-{
-public:
-    virtual ClassificationResult classify(Attached &) = 0;
-    virtual ExtractionResult extract(Attached &) = 0;
-    virtual ~Object() = default;
-    explicit Object(int page_num) : page_num_(page_num) {}
+  explicit Object(int page_num, Attached &) : page_num_(page_num) {}
 
 protected:
-    int page_num() { return page_num_; }
+  int page_num() { return page_num_; }
 
 private:
-    int page_num_ = 0;
+  int page_num_ = 0;
 };
 
-#define DEFINE_OBJECT(name, Type)                                                                         \
-                                                                                                          \
-    void deleter_##Type(void *p) noexcept                                                                 \
-    {                                                                                                     \
-        delete static_cast<Type *>(p);                                                                    \
-    }                                                                                                     \
-                                                                                                          \
-    Result *classify_##name(uint32_t page_num, fz_context *ctx,                                           \
-                            fz_document *doc)                                                             \
-    {                                                                                                     \
-                                                                                                          \
-        static_assert(std::is_base_of_v<Object, Type>, "...must derive from Object");                     \
-        static_assert(std::is_constructible_v<Type, uint32_t>, "...needs a (uint32_t page) constructor"); \
-        static_assert(!std::is_abstract_v<Type>, "...must implement both classify() and extract()");      \
-                                                                                                          \
-        auto obj = std::make_unique<Type>(page_num);                                                      \
-        {                                                                                                 \
-            Attached att(ctx, doc, page_num);                                                             \
-            ClassificationResult out = obj->classify(att);                                                \
-            if (!out.is_ok())                                                                             \
-                return Result::fail(out.failure());                                                       \
-        }                                                                                                 \
-        return Result::ok(obj.release(), &deleter_##Type);                                                \
-    }                                                                                                     \
-                                                                                                          \
-    Result *extract_##name(uint32_t page_num, fz_context *ctx,                                            \
-                           fz_document *doc, void *shared)                                                \
-    {                                                                                                     \
-        Type *obj = static_cast<Type *>(shared);                                                          \
-        Attached att(ctx, doc, page_num);                                                                 \
-        ExtractionResult out = obj->extract(att);                                                         \
-        if (!out.is_ok())                                                                                 \
-            return Result::fail(out.failure());                                                           \
-        return Result::ok(new std::string(std::move(out).take_data()), &deleter_StdString);               \
-    }                                                                                                     \
-    static_assert(true, "")
+template <typename... Capabilities>
+  requires(std::derived_from<Capabilities, Capability> && ...)
+class ObjectWith : public Object, public Capabilities... {
+public:
+  using Object::Object;
+
+  /// Evaluates every capability, in the order listed, then hands any failures
+  /// to evaluate_capability_failures() - which is only called if there are any.
+  ClassificationResult evaluate_capabilities(Attached &att) {
+    std::vector<CapabilityFailure> failures;
+    (collect(failures, Capabilities::evaluate_capability(att)), ...);
+
+    if (failures.empty())
+      return ClassificationResult::ok();
+    return evaluate_capability_failures(failures);
+  }
+
+protected:
+  /// In the case that a capability throws an error, users may handle said
+  /// errors through this method Or they may choose to omit said errors
+  /// entirely.
+  ///
+  /// For instance, if text extraction fails, then perhaps the user will opt to
+  /// skip this page.
+  ///
+  /// Capabilities MUST be utilized through this class, so CapabilityFailures
+  /// may actually propogate, users may utilize the Object class to circumvent
+  /// utilizing Capabilities altogether.
+  virtual ClassificationResult evaluate_capability_failures(
+      const std::vector<CapabilityFailure> &failures) = 0;
+
+private:
+  static void collect(std::vector<CapabilityFailure> &into,
+                      std::vector<CapabilityFailure> from) {
+    for (CapabilityFailure &failure : from)
+      into.push_back(std::move(failure));
+  }
+};
+
+template <class T>
+concept HasCapabilities = requires(T &obj, Attached &att) {
+  { obj.evaluate_capabilities(att) } -> std::same_as<ClassificationResult>;
+};
+
+template <class T>
+ClassificationResult evaluate_capabilities_if_any(T &obj, Attached &att) {
+  if constexpr (HasCapabilities<T>)
+    return obj.evaluate_capabilities(att);
+  else
+    return ClassificationResult::ok();
+}
+
+#define DEFINE_OBJECT(name, Type)                                              \
+                                                                               \
+  void deleter_##Type(void *p) noexcept { delete static_cast<Type *>(p); }     \
+                                                                               \
+  Result *classify_##name(uint32_t page_num, fz_context *ctx,                  \
+                          fz_document *doc) {                                  \
+                                                                               \
+    static_assert(std::is_base_of_v<Object, Type>,                             \
+                  "...must derive from Object");                               \
+    static_assert(std::is_constructible_v<Type, uint32_t, Attached &>,         \
+                  "...needs a (uint32_t page, Attached &) constructor");       \
+    static_assert(!std::is_abstract_v<Type>,                                   \
+                  "...must implement classify(), extract() and, for "          \
+                  "ObjectWith, evaluate_capability_failures()");               \
+                                                                               \
+    Attached att(ctx, doc, page_num);                                          \
+    auto obj = std::make_unique<Type>(page_num, att);                          \
+    {                                                                          \
+      ClassificationResult caps_evaluated =                                    \
+          evaluate_capabilities_if_any(*obj, att);                             \
+      if (!caps_evaluated.is_ok())                                             \
+        return Result::fail(caps_evaluated.failure());                         \
+      ClassificationResult out = obj->classify(att);                           \
+      if (!out.is_ok())                                                        \
+        return Result::fail(out.failure());                                    \
+    }                                                                          \
+    return Result::ok(obj.release(), &deleter_##Type);                         \
+  }                                                                            \
+                                                                               \
+  Result *extract_##name(uint32_t page_num, fz_context *ctx, fz_document *doc, \
+                         void *shared) {                                       \
+    Type *obj = static_cast<Type *>(shared);                                   \
+    Attached att(ctx, doc, page_num);                                          \
+    ExtractionResult out = obj->extract(att);                                  \
+    if (!out.is_ok())                                                          \
+      return Result::fail(out.failure());                                      \
+    return Result::ok(new std::string(std::move(out).take_data()),             \
+                      &deleter_StdString);                                     \
+  }                                                                            \
+  static_assert(true, "")

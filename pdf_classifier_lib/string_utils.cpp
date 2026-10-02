@@ -107,7 +107,7 @@ bool has_image(fz_context *ctx, fz_page *page)
     return false;
 }
 
-std::string compress_text(std::vector<PdfText> extracted_text)
+std::string compress_text(std::vector<PdfText> extracted_text) noexcept
 {
     if (extracted_text.empty())
         return "";
