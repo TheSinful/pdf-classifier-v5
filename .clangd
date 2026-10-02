@@ -1,0 +1,4 @@
+# GCC 16 defaults to C++20, so CMake leaves -std out of compile_commands.json;
+# clang (and so clangd) still defaults to C++17. Match what the build uses.
+CompileFlags:
+  Add: [-std=c++20]

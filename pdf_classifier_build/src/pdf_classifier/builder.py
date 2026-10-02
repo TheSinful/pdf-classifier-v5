@@ -16,6 +16,7 @@ import logging
 import shutil
 import subprocess
 import os 
+import sys
 import asyncio
 
 logger = logging.getLogger(__name__)
@@ -157,10 +158,11 @@ class Builder:
         return stream
 
     async def spawn_classifier(self, start_page: int, end_page: int, thread_count: int, doc_path: Path, verbose: bool) -> None: 
+        exe_suffix = ".exe" if sys.platform == "win32" else ""
         if self.in_debug: 
-            built_classifier_path = self.rs_core_root_path.parent / "target" / "debug" / "pdf_classifier_core.exe" 
+            built_classifier_path = self.rs_core_root_path.parent / "target" / "debug" / f"pdf_classifier_core{exe_suffix}"
         else: 
-            built_classifier_path = self.rs_core_root_path.parent / "target" / "release" / "pdf_classifier_core.exe" 
+            built_classifier_path = self.rs_core_root_path.parent / "target" / "release" / f"pdf_classifier_core{exe_suffix}"
             
         
         if not built_classifier_path.exists(): 

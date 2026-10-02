@@ -1,51 +1,44 @@
 #include "diagram.hpp"
-#include <memory>
-#include <regex>
 
-Result* Diagram::contains_valid_chapter_text() {
+ClassificationResult Diagram::contains_valid_chapter_text() {
   if (frequency_of("Chapter", compressed_text, 1) == EXPECTED_LOWER_CHAPTER &&
       frequency_of("CHAPTER", compressed_text, 1) == EXPECTED_UPPER_CHAPTER) {
-    return Result::ok(NULL, NULL);
+    return ClassificationResult::ok();
   } else {
-    return Result::fail("doesn't contain valid chapter text");
+    return ClassificationResult::fail("doesn't contain valid chapter text");
   }
 }
 
-Result* Diagram::contains_valid_figure_text() {
-  std::regex pattern(R"(Fig\s+(\d+):\s*(.+))");
+ClassificationResult Diagram::contains_valid_figure_text() {
   std::smatch matches;
 
-  if (std::regex_search(compressed_text, matches, pattern)) {
-    fig_num = std::stoi(matches[1].str()); // int
+  if (std::regex_search(compressed_text, matches, FIG_NUM_PATTERN)) {
+    fig_num = std::stoi(matches[1].str());
     caption = matches[2].str();
-    return Result::ok(NULL, NULL);
+    return ClassificationResult::ok();
   } else {
-    return Result::fail("failed to find figure text");
+    return ClassificationResult::fail("failed to find figure text");
   }
 }
 
-Result* Diagram::contains_image() {
-  if (has_image()) {
-    return Result::ok(NULL, NULL);
+ClassificationResult Diagram::contains_image(Attached& att) {
+  if (att.has_image()) {
+    return ClassificationResult::ok();
   } else {
-    return Result::fail("doesn't contain an image");
+    return ClassificationResult::fail("doesn't contain an image.");
   }
 }
 
-void deleter_Diagram(void* p) { delete static_cast<Diagram*>(p); }
+ClassificationResult Diagram::classify(Attached& att) {
+  UNWRAP(contains_image(att));
+  UNWRAP(contains_valid_chapter_text());
+  UNWRAP(contains_valid_figure_text());
 
-Result* classify_diagram(uint32_t page, fz_context* ctx, fz_document* doc) {
-  auto inst = std::make_unique<Diagram>(ctx, doc, page);
-
-  UNWRAP_RESULT(inst->contains_image());
-  UNWRAP_RESULT(inst->contains_valid_chapter_text());
-  UNWRAP_RESULT(inst->contains_valid_figure_text());
-
-  return Result::ok(inst.release(), deleter_Diagram);
+  return ClassificationResult::ok();
 }
 
-Result* extract_diagram(uint32_t page, fz_context* ctx, fz_document* doc, void* shared) {
-  Diagram* inst = static_cast<Diagram*>(shared);
-  std::string* data = new std::string(std::format("{{ \"fig_num\": {}, caption: \"{}\" }}", inst->fig_num, inst->caption));
-  return Result::ok(data, deleter_StdString);
+ExtractionResult Diagram::extract(Attached&) {
+  return ExtractionResult::ok(nlohmann::json{{"fig_num", fig_num}, {"caption", caption}});
 }
+
+DEFINE_OBJECT(diagram, Diagram);

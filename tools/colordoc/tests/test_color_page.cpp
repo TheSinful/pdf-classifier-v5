@@ -1,4 +1,5 @@
 #include "colordoc_fixture.hpp"
+#include <format>
 #include "color_page.hpp"
 
 using ColorPageTest = ColordocFixture;

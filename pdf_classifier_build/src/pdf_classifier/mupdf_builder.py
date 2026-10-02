@@ -83,15 +83,23 @@ class MupdfBuilder:
         config_content = textwrap.dedent("""
             include(FindPackageHandleStandardArgs)
 
-            set(MUPDF_LIBRARIES "${CMAKE_INSTALL_PREFIX}/lib/libmupdf.lib")
+            if(WIN32)
+                set(MUPDF_LIBRARIES "${CMAKE_INSTALL_PREFIX}/lib/libmupdf.lib")
+                set(MUPDF_LINK_DEPS "")
+            else()
+                # make's static build splits the bundled third-party code into its own archive.
+                set(MUPDF_LIBRARIES "${CMAKE_INSTALL_PREFIX}/lib/libmupdf.a")
+                set(MUPDF_LINK_DEPS "${CMAKE_INSTALL_PREFIX}/lib/libmupdf-third.a;m")
+            endif()
             set(MUPDF_INCLUDE_DIR "${CMAKE_INSTALL_PREFIX}/include/mupdf")
 
 
             if(NOT TARGET mupdf::mupdf)
             add_library(mupdf::mupdf STATIC IMPORTED)
             set_target_properties(mupdf::mupdf PROPERTIES
-                IMPORTED_LOCATION "${CMAKE_INSTALL_PREFIX}/lib/libmupdf.lib"
+                IMPORTED_LOCATION "${MUPDF_LIBRARIES}"
                 INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_INSTALL_PREFIX}/include/mupdf"
+                INTERFACE_LINK_LIBRARIES "${MUPDF_LINK_DEPS}"
             )
             endif()
 

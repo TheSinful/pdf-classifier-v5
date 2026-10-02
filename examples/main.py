@@ -26,7 +26,7 @@ async def main():
     build.override(BlankAfterClassOverride("chapter"))
     build.override(MultiPageHierarchyBreakOverride("chapter", True, "subchapter", ["diagram", "datatable"]))
 
-    stream: Stream = build.build(skip_user_build=True)
+    stream: Stream = build.build(skip_user_build=False)
 
     test_doc_path = Path(__file__).parent.parent / "data" / "large_test_doc.pdf"
     start_page = 44

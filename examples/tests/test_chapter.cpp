@@ -3,16 +3,15 @@
 #endif
 
 #include "chapter.hpp"
-#include "subchapter.hpp"
+#include "classify_helpers.hpp"
 #include <filesystem>
 #include <gtest/gtest.h>
 #include <mupdf/fitz.h>
+#include <nlohmann/json.hpp>
 
-static bool result_is_ok(Result* res) {
-  bool ok = (res->type == Result::Type::OK);
-  delete res;
-  return ok;
-}
+// Generated in chapter.cpp by DEFINE_OBJECT(chapter, Chapter). Declared here
+// because no header declares the DEFINE_OBJECT shims yet.
+Result* classify_chapter(uint32_t page_num, fz_context* ctx, fz_document* doc);
 
 class ChapterFixture : public ::testing::Test {
 protected:
@@ -47,32 +46,36 @@ protected:
   }
 };
 
-// Expose protected chapter_number for assertion
-class TestableChapter : public Chapter {
-public:
-  using Chapter::Chapter;
-  const std::string& get_chapter_number() const { return chapter_number; }
-};
+// The text checks are private and read the text the TextExtraction capability
+// provides, so they are exercised through classify_like_engine() (capabilities,
+// then classify()), and the chapter number through the payload extract()
+// produces rather than the member it is stored in.
 
 // Old test: TestChapterValidation / ValidateExtractedChapterNumber
 // Page 1230 is the chapter page used by the original suite.
 TEST_F(ChapterFixture, TestContainsValidChapterText) {
-  TestableChapter ch(ctx, doc, 1230);
-  EXPECT_TRUE(result_is_ok(ch.contains_valid_chapter_text())) << "Page 1230 should pass chapter text validation";
+  Attached att(ctx, doc, 1230);
+  Chapter ch(1230, att);
+  ClassificationResult res = classify_like_engine(ch, att);
+  EXPECT_TRUE(res.is_ok()) << "Page 1230 should pass chapter text validation: " << (res.is_ok() ? "" : res.failure());
 }
 
 TEST_F(ChapterFixture, TestExtractChapterNumber) {
-  TestableChapter ch(ctx, doc, 1230);
-  ASSERT_TRUE(result_is_ok(ch.extract_chapter_number())) << "extract_chapter_number() should succeed on page 1230";
-  EXPECT_EQ(ch.get_chapter_number(), "2-16") << "Expected chapter number '2-16'";
+  Attached att(ctx, doc, 1230);
+  Chapter ch(1230, att);
+  ASSERT_TRUE(classify_like_engine(ch, att).is_ok()) << "classify() (which extracts the chapter number) should succeed on page 1230";
+
+  ExtractionResult extracted = ch.extract(att);
+  ASSERT_TRUE(extracted.is_ok()) << "extract() should succeed on page 1230";
+  EXPECT_EQ(nlohmann::json::parse(extracted.data())["chapter_num"], "2-16") << "Expected chapter number '2-16'";
 }
 
 // Old test: TestFailureOnSubChapterPage
 // Page 1233 is a sub-chapter page; classifying it as a chapter should fail.
 TEST_F(ChapterFixture, TestFailureOnSubChapterPage) {
-  TestableChapter ch(ctx, doc, 1233);
-  EXPECT_FALSE(result_is_ok(ch.contains_valid_chapter_text()))
-      << "Page 1233 is a subchapter page — chapter text validation should fail";
+  Attached att(ctx, doc, 1233);
+  Chapter ch(1233, att);
+  EXPECT_FALSE(classify_like_engine(ch, att).is_ok()) << "Page 1233 is a subchapter page — chapter text validation should fail";
 }
 
 // Old test: ValidateExpectedSubChapters / TestConstructSubChapters (page 235)
