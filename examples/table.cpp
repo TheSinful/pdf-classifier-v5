@@ -503,4 +503,4 @@ ClassificationResult DataTable::evaluate_capability_failures(const std::vector<C
       std::format("amalgamated page: {}, should be table but text extraction failed.", failures.front().reason));
 }
 
-DEFINE_OBJECT(datatable, DataTable);
+

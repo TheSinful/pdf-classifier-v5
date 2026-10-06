@@ -77,12 +77,19 @@ ClassificationResult evaluate_capabilities_if_any(T &obj, Attached &att) {
     return ClassificationResult::ok();
 }
 
+/// Registers [Type] as the object [name]: generates classify_<name>,
+/// extract_<name> and deleter_<Type>, the C ABI functions the generated
+/// function map dispatches to. Place it after the class definition, in the
+/// class's header - the functions are inline, so every file including the
+/// header (the function map, tests) shares a single definition.
 #define DEFINE_OBJECT(name, Type)                                              \
                                                                                \
-  void deleter_##Type(void *p) noexcept { delete static_cast<Type *>(p); }     \
+  inline void deleter_##Type(void *p) noexcept {                               \
+    delete static_cast<Type *>(p);                                             \
+  }                                                                            \
                                                                                \
-  Result *classify_##name(uint32_t page_num, fz_context *ctx,                  \
-                          fz_document *doc) {                                  \
+  inline Result *classify_##name(uint32_t page_num, fz_context *ctx,           \
+                                 fz_document *doc) {                           \
                                                                                \
     static_assert(std::is_base_of_v<Object, Type>,                             \
                   "...must derive from Object");                               \
@@ -106,8 +113,8 @@ ClassificationResult evaluate_capabilities_if_any(T &obj, Attached &att) {
     return Result::ok(obj.release(), &deleter_##Type);                         \
   }                                                                            \
                                                                                \
-  Result *extract_##name(uint32_t page_num, fz_context *ctx, fz_document *doc, \
-                         void *shared) {                                       \
+  inline Result *extract_##name(uint32_t page_num, fz_context *ctx,            \
+                                fz_document *doc, void *shared) {              \
     Type *obj = static_cast<Type *>(shared);                                   \
     Attached att(ctx, doc, page_num);                                          \
     ExtractionResult out = obj->extract(att);                                  \

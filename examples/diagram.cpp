@@ -41,4 +41,4 @@ ExtractionResult Diagram::extract(Attached&) {
   return ExtractionResult::ok(nlohmann::json{{"fig_num", fig_num}, {"caption", caption}});
 }
 
-DEFINE_OBJECT(diagram, Diagram);
+

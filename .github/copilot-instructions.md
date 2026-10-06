@@ -332,11 +332,22 @@ pub type ExtractionResult     = UserResult<CxxString>;   // extract (JSON string
 pub enum UserResult<T> { Ok(OkUserResult<T>), Fail(FailUserResult) }
 ```
 
-User C++ function signatures (validated by `UserFuncValidator`):
-- **Classify**: `Result* fn(uint32_t page, fz_context* ctx, fz_document* doc)`
-- **Extract**:  `Result* fn(uint32_t page, fz_context* ctx, fz_document* doc, void* shared)`
+User C++ objects derive from `pdf_classifier_lib`'s `Object` (or
+`ObjectWith<Capabilities...>`), take a `(int page, Attached&)` constructor, and
+override (checked by `UserFuncValidator` on the class or its bases):
+- **Classify**: `ClassificationResult classify(Attached&)`
+- **Extract**:  `ExtractionResult extract(Attached&)`
+- `ObjectWith` also requires `evaluate_capability_failures(...)`, which decides
+  what a failed capability means for the object.
 
-`page` is always first; both return `Result*` (not `void*`).
+`DEFINE_OBJECT(name, Type)`, placed after the class definition in its header,
+generates the C ABI functions the func-map dispatches to:
+- **Classify**: `Result* classify_<name>(uint32_t page, fz_context* ctx, fz_document* doc)`
+- **Extract**:  `Result* extract_<name>(uint32_t page, fz_context* ctx, fz_document* doc, void* shared)`
+
+They are `inline`, so the header can be included anywhere (`func_map.h`,
+tests) without duplicate definitions. `page` is always first; both return
+`Result*` (not `void*`).
 
 ## Extraction Result Streaming (Rust → Python)
 
@@ -383,6 +394,9 @@ stream = build.build(skip_user_build=True)
 - `.pair_to(name, order)` → `order=1` first in pair, `order=2` second.
 - `.child_of(name)` → parent/child relationship.
 - The builder injects an `UNKNOWN` object at discriminant 0 (not user-defined).
+- `.classify()` / `.extract()` (as above) are deprecated: `.cpp_class("Chapter")`
+  names the C++ class and derives the `classify_chapter` / `extract_chapter`
+  names that `DEFINE_OBJECT(chapter, Chapter)` generates.
 
 ## Generated Artifacts (do not edit by hand)
 
@@ -401,10 +415,13 @@ stream = build.build(skip_user_build=True)
 
 ## Adding a New Object Type
 
-1. **Python**: register it with `ObjectFactory` (`.name().header().classify()
-   .extract().child_of()...`).
-2. **C++**: implement the classify/extract functions with the required
-   signatures in the user header/source.
+1. **Python**: register it with `ObjectFactory`
+   (`.cpp_class("Name").header("name.hpp").child_of()...`).
+2. **C++**: derive the class from `Object` (or `ObjectWith<...>` for
+   capabilities), give it a `(int page, Attached&)` constructor, override
+   `classify(Attached&)` / `extract(Attached&)` (and, for `ObjectWith`,
+   `evaluate_capability_failures`), then add `DEFINE_OBJECT(name, Name);` after
+   the class in its header. The member functions can stay in the `.cpp`.
 3. **Rebuild**: `python examples/main.py` regenerates all artifacts and rebuilds
    both native sides.
 

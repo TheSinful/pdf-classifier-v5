@@ -174,9 +174,10 @@ class ObjectBuilder:
             to the BASE_DIRS of the project's `FILE_SET HEADERS` - it is emitted verbatim
             as `#include <generated/[name]>` in the generated function map.
 
-            Note this is the *declaration*: `DEFINE_OBJECT` and the classify/extract
-            bodies belong in the matching .cpp, since the macro expands to non-inline
-            free functions.
+            The class's member functions can live in the matching .cpp, but
+            `DEFINE_OBJECT` must follow the class definition in this header: it
+            expands to `inline` functions, and the generated function map reaches
+            them by including this header.
         """
         self._header = name
         return self
@@ -187,7 +188,8 @@ class ObjectBuilder:
             which implements this object's classify()/extract() overrides.
 
             The class is registered on the C++ side with `DEFINE_OBJECT(<object name>, [name])`,
-            which generates the two standalone shims wrapping those overrides. Their
+            placed after the class definition in its header, which generates the two
+            standalone shims wrapping those overrides. Their
             names follow from the object name, so this method makes calling
             [classify()] or [extract()] unnecessary - they are derived at [build()].
 

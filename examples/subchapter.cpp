@@ -56,4 +56,4 @@ ExtractionResult SubChapter::extract(Attached&) {
   return ExtractionResult::ok(nlohmann::json{{"subchapter_num", subchapter_number}});
 }
 
-DEFINE_OBJECT(subchapter, SubChapter);
+

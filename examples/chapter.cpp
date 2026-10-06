@@ -1,6 +1,4 @@
 #include "chapter.hpp"
-#include <format>
-#include <regex>
 #include <pdf_classifier_lib/string_utils.hpp>
 
 using nlohmann::json;
@@ -82,5 +80,4 @@ ExtractionResult Chapter::extract_expected_subchapters() {
   return ExtractionResult::ok(data);
 }
 
-DEFINE_OBJECT(chapter, Chapter);
 

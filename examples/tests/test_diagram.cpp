@@ -8,10 +8,6 @@
 #include <gtest/gtest.h>
 #include <mupdf/fitz.h>
 
-// Generated in diagram.cpp by DEFINE_OBJECT(diagram, Diagram). Declared here
-// because no header declares the DEFINE_OBJECT shims yet.
-Result* classify_diagram(uint32_t page_num, fz_context* ctx, fz_document* doc);
-
 class DiagramFixture : public ::testing::Test {
 protected:
   fz_context* ctx = nullptr;
