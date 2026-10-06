@@ -41,3 +41,6 @@ private:
   ClassificationResult extract_chapter_number();
   ExtractionResult extract_expected_subchapters();
 };
+
+DEFINE_OBJECT(chapter, Chapter);
+

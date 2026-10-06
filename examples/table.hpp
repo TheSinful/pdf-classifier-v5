@@ -111,6 +111,4 @@ private:
   std::vector<TableDataCell> cells;
 };
 
-void deleter_Datatable(void* p);
-Result* classify_datatable(uint32_t page, fz_context* ctx, fz_document* doc);
-Result* extract_datatable(uint32_t page, fz_context* ctx, fz_document* doc, void* shared);
+DEFINE_OBJECT(datatable, DataTable);

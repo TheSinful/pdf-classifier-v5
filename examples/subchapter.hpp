@@ -31,3 +31,5 @@ public:
 
   std::string subchapter_number{"uninitialized"};
 };
+
+DEFINE_OBJECT(subchapter, SubChapter);

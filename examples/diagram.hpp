@@ -29,3 +29,5 @@ private:
   ClassificationResult contains_valid_figure_text();
   ClassificationResult contains_image(Attached& att);
 };
+
+DEFINE_OBJECT(diagram, Diagram);

@@ -9,10 +9,6 @@
 #include <mupdf/fitz.h>
 #include <nlohmann/json.hpp>
 
-// Generated in chapter.cpp by DEFINE_OBJECT(chapter, Chapter). Declared here
-// because no header declares the DEFINE_OBJECT shims yet.
-Result* classify_chapter(uint32_t page_num, fz_context* ctx, fz_document* doc);
-
 class ChapterFixture : public ::testing::Test {
 protected:
   fz_context* ctx = nullptr;
