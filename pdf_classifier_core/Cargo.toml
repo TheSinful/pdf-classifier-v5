@@ -3,6 +3,9 @@ name = "pdf_classifier_core"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+no_ffi = []
+
 [dependencies]
 cxx = "1.0.192"
 futures = "0.3.31"

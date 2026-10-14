@@ -1,5 +1,9 @@
 use std::env;
 
+#[cfg(feature = "no_ffi")]
+fn main() {} // dummy to evade build error when no_ffi is enabled.
+
+#[cfg(not(feature = "no_ffi"))]
 fn main() {
     let root = env::var("CARGO_MANIFEST_DIR").unwrap();
 
@@ -54,3 +58,5 @@ fn main() {
         println!("cargo:rustc-link-lib=static=mupdf-third");
     }
 }
+
+
