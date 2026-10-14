@@ -27,7 +27,7 @@ target_include_directories(pdf_classifier_lib PUBLIC
 target_sources(pdf_classifier_lib
     PUBLIC FILE_SET HEADERS
     BASE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}
-    FILES object.hpp wrappers.hpp result.hpp util.hpp string_utils.hpp)
+    FILES object.hpp attached.hpp capability.hpp wrappers.hpp result.hpp util.hpp string_utils.hpp)
 
 install(TARGETS pdf_classifier_lib
     EXPORT pdf_classifier_libTargets

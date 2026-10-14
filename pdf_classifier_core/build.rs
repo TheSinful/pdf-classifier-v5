@@ -40,6 +40,9 @@ fn main() {
 
     println!("cargo:rustc-link-lib=static=bindings");
     println!("cargo:rustc-link-lib=static=classifier_intermediary");
+    // classifier_intermediary is a static lib, so it doesn't carry its own
+    // dependencies: pdf_classifier_lib has to be linked after it, by name.
+    println!("cargo:rustc-link-lib=static=pdf_classifier_lib");
 
     // MuPDF goes last: GNU ld only resolves symbols against libraries that come
     // after the code referencing them (MSVC doesn't care about order).
