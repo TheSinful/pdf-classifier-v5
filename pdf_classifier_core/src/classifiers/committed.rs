@@ -20,6 +20,7 @@ use tracing::debug_span;
 use tracing::info;
 use tracing::instrument;
 
+
 // intentionally a "transparent" struct so other classifier modes can depend upon it
 #[derive(Debug)]
 pub struct CommittedClassifier {
@@ -209,8 +210,11 @@ impl CommittedClassifier {
         res: Result<(), String>,
     ) -> () {
         if let Err(_) = res {
+            self.ctx.guarantee_failure_of(class, page);
+            self.deferral_origin = Some(self.deferral_origin.map_or(page, |p| {
+                Page(p.min(*page))
+            }));
             if !self.should_defer {
-                self.deferral_origin = Some(page);
                 self.defer();
             }
         }
