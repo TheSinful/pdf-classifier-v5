@@ -46,7 +46,10 @@ static void no_op_unlock_fn(void *user, int lock) {}
 
 fz_locks_context *no_op_locks()
 {
-    fz_locks_context no_op_locks = {nullptr, no_op_lock_fn, no_op_unlock_fn};
+    // static: fz_new_context reads this after we return. A local here is a
+    // dangling pointer, which GCC turns into nullptr (default locks), and
+    // fz_clone_context then refuses to clone the master context.
+    static fz_locks_context no_op_locks = {nullptr, no_op_lock_fn, no_op_unlock_fn};
 
     return &no_op_locks;
 }

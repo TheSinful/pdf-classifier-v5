@@ -58,7 +58,7 @@ class CppFuncMapGenerator(Serializer):
     
     def _classify_func_map(self): 
         classify_func_entries = [
-            f'{{ "{func.for_class}",  &{func.name}}},'
+            f'{{ "{func.for_class}",  reinterpret_cast<void*>(&{func.name})}},'
             for func in self.expected_classify_funcs
         ]
         
@@ -72,7 +72,7 @@ class CppFuncMapGenerator(Serializer):
     
     def _extract_func_map(self): 
         extract_func_entries = [
-            f'{{ "{func.for_class}",  &{func.name}}},'
+            f'{{ "{func.for_class}",  reinterpret_cast<void*>(&{func.name})}},'
             for func in self.expected_extract_funcs
         ]
         
