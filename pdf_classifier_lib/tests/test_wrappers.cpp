@@ -46,7 +46,7 @@ namespace
 
     TrackedOwned make_tracked(int id)
     {
-        return TrackedOwned{fake_ctx(), new Tracked{id}};
+        return TrackedOwned{new Tracked{id}};
     }
 }
 
@@ -58,6 +58,12 @@ protected:
         g_drop_count = 0;
         g_last_drop_ctx = nullptr;
         g_last_drop_id = -1;
+        bind_current_context(fake_ctx());
+    }
+
+    void TearDown() override
+    {
+        bind_current_context(nullptr);
     }
 };
 
@@ -84,15 +90,19 @@ TEST_F(OwnedFixture, DestructorDropsExactlyOnce)
     EXPECT_EQ(g_last_drop_id, 7);
 }
 
-// Drop takes the context the resource was created with. Passing the wrong one
-// is the cross-thread free this whole design exists to prevent, so pin it.
-TEST_F(OwnedFixture, DropReceivesOriginatingContext)
+// Drop frees through the context bound to the dropping thread at the moment of
+// the drop, not one captured at creation: in the classifier, the per-call clone
+// that created a resource is gone by the time its payload is freed.
+TEST_F(OwnedFixture, DropUsesTheThreadsBoundContext)
 {
+    fz_context *later_ctx = reinterpret_cast<fz_context *>(0xBEEF);
+
     {
         TrackedOwned owned = make_tracked(1);
+        bind_current_context(later_ctx);
     }
 
-    EXPECT_EQ(g_last_drop_ctx, fake_ctx());
+    EXPECT_EQ(g_last_drop_ctx, later_ctx);
 }
 
 TEST_F(OwnedFixture, DefaultConstructedDropsNothing)
@@ -264,6 +274,7 @@ protected:
 
         ctx = fz_new_context(nullptr, nullptr, FZ_STORE_DEFAULT);
         ASSERT_NE(ctx, nullptr);
+        bind_current_context(ctx); // FzOwned frees through the thread's bound context
 
         fz_register_document_handlers(ctx);
         doc = fz_open_document(ctx, pdf.string().c_str());
@@ -275,7 +286,10 @@ protected:
         if (doc)
             fz_drop_document(ctx, doc);
         if (ctx)
+        {
+            bind_current_context(nullptr);
             fz_drop_context(ctx);
+        }
     }
 };
 

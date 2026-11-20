@@ -3,6 +3,8 @@
 #include <gtest/gtest.h>
 #include <mupdf/fitz.h>
 
+#include "../wrappers.hpp"
+
 #include <filesystem>
 
 // Shared fixture for tests that need a real document. Skips rather than fails
@@ -25,6 +27,7 @@ protected:
 
         ctx = fz_new_context(nullptr, nullptr, FZ_STORE_DEFAULT);
         ASSERT_NE(ctx, nullptr);
+        bind_current_context(ctx); // FzOwned frees through the thread's bound context
 
         fz_register_document_handlers(ctx);
         doc = fz_open_document(ctx, pdf.string().c_str());
@@ -36,6 +39,9 @@ protected:
         if (doc)
             fz_drop_document(ctx, doc);
         if (ctx)
+        {
+            bind_current_context(nullptr);
             fz_drop_context(ctx);
+        }
     }
 };

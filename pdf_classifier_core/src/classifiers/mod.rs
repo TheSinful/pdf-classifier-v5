@@ -5,6 +5,7 @@ use crate::classifiers::ovstr::OverrideStreamClassifier;
 use crate::classifiers::ovstr::StreamPtr;
 use crate::context::Context;
 use crate::context::ContextError;
+use crate::ffi::FzContext;
 use crate::generated::generated_object_types::KnownObject;
 use crate::inferencer::InferenceError;
 use crate::inferencer::Inferencer;
@@ -93,6 +94,8 @@ impl ClassifierState {
 pub struct Classifier {
     state: ClassifierState,
     end_page: Page,
+    _dummy_ctx: FzContext // Dummy-context to ensure dropped payloads on the main-thread have a
+                          // current_context set. 
 }
 
 macro_rules! ignore_state_change_if {
@@ -121,6 +124,8 @@ impl Classifier {
                 Context::new(start_page, end_page),
             )),
             end_page,
+            _dummy_ctx: unsafe { FzContext::new() },
+
         }
     }
 

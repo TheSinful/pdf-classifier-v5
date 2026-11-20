@@ -1,10 +1,10 @@
-#pragma once 
+#pragma once
 
+#include "./string_utils.hpp"
+#include "./wrappers.hpp"
+#include <memory>
 #include <mupdf/fitz.h>
 #include <vector>
-#include <memory>
-#include "./wrappers.hpp"
-#include "./string_utils.hpp"
 
 class AttachedAllocator {
 private:
@@ -56,5 +56,3 @@ public:
     return alloc.allocate<Owned>(new_fn, std::forward<Args>(args)...);
   }
 };
-
-

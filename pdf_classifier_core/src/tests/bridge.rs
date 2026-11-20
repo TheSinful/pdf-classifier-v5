@@ -7,13 +7,13 @@ use crate::tests::init::get_LARGE_TEST_DOC_test_path;
 
 #[test]
 fn create_ctx() {
-    let ctx = unsafe { FzContext::new(STANDARD_CTX_MEM_LIMIT) };
+    let ctx = unsafe { FzContext::new() };
     assert!(!ctx.0.is_null())
 }
 
 #[test]
 fn test_classify_call() {
-    let ctx = unsafe { FzContext::new(STANDARD_CTX_MEM_LIMIT) };
+    let ctx = unsafe { FzContext::new() };
     assert!(!ctx.0.is_null());
 
     let doc = unsafe { Document::new(get_LARGE_TEST_DOC_test_path(), &ctx) };
@@ -28,7 +28,7 @@ fn test_classify_call() {
 
 #[test]
 fn test_extract_call() {
-    let ctx = unsafe { FzContext::new(STANDARD_CTX_MEM_LIMIT) };
+    let ctx = unsafe { FzContext::new() };
     assert!(!ctx.is_null());
 
     let doc = unsafe { Document::new(get_LARGE_TEST_DOC_test_path(), &ctx) };

@@ -1,122 +1,103 @@
 #pragma once
 
 #include <mupdf/fitz.h>
-#include <utility>
 #include <stdexcept>
 #include <type_traits>
+#include <utility>
 
-class FzError : public std::runtime_error
-{
+inline thread_local fz_context *current_context = nullptr;
+inline void bind_current_context(fz_context *to) { current_context = to; }
+
+class FzError : public std::runtime_error {
 public:
-    FzError(int code, const char *msg) : std::runtime_error(msg), code(code) {}
+  FzError(int code, const char *msg) : std::runtime_error(msg), code(code) {}
 
-    int code; // fz_caught(): FZ_ERROR_MEMORY, FZ_ERROR_SYNTAX, ...
+  int code; // fz_caught(): FZ_ERROR_MEMORY, FZ_ERROR_SYNTAX, ...
 };
 
 template <class Fn, class... Args>
 auto fz_call(fz_context *ctx, Fn fn, Args &&...args)
-    -> std::invoke_result_t<Fn, fz_context *, Args &&...>
-{
-    using R = std::invoke_result_t<Fn, fz_context *, Args &&...>;
+    -> std::invoke_result_t<Fn, fz_context *, Args &&...> {
+  using R = std::invoke_result_t<Fn, fz_context *, Args &&...>;
 
-    if constexpr (std::is_void_v<R>)
-    {
-        fz_try(ctx)
-        {
-            fn(ctx, std::forward<Args>(args)...);
-        }
-        fz_catch(ctx)
-        {
-            throw FzError(fz_caught(ctx), fz_caught_message(ctx));
-        }
-    }
-    else
-    {
-        R result{};
-        fz_var(result);
+  if constexpr (std::is_void_v<R>) {
+    fz_try(ctx) { fn(ctx, std::forward<Args>(args)...); }
+    fz_catch(ctx) { throw FzError(fz_caught(ctx), fz_caught_message(ctx)); }
+  } else {
+    R result{};
+    fz_var(result);
 
-        fz_try(ctx)
-        {
-            result = fn(ctx, std::forward<Args>(args)...);
-        }
-        fz_catch(ctx)
-        {
-            throw FzError(fz_caught(ctx), fz_caught_message(ctx));
-        }
+    fz_try(ctx) { result = fn(ctx, std::forward<Args>(args)...); }
+    fz_catch(ctx) { throw FzError(fz_caught(ctx), fz_caught_message(ctx)); }
 
-        return result;
-    }
+    return result;
+  }
 }
 
-struct FzOwnedResource
-{
-    virtual ~FzOwnedResource() = default;
+struct FzOwnedResource {
+  virtual ~FzOwnedResource() = default;
 };
 
 template <class T, void (*Drop)(fz_context *, T *)>
-class FzOwned : public FzOwnedResource
-{
+class FzOwned : public FzOwnedResource {
 public:
-    using element_type = T;
+  using element_type = T;
 
-    FzOwned() noexcept = default;
-    FzOwned(fz_context *ctx, T *owned) noexcept : ctx(ctx), owned(owned) {}
-    ~FzOwned() { reset(); }
+  FzOwned() noexcept = default;
+  FzOwned(T *owned) noexcept : owned(owned) {}
+  ~FzOwned() { reset(); }
 
-    FzOwned(const FzOwned &) = delete;
-    FzOwned &operator=(const FzOwned &) = delete;
+  FzOwned(const FzOwned &) = delete;
+  FzOwned &operator=(const FzOwned &) = delete;
 
-    FzOwned(FzOwned &&o) noexcept
-        : ctx(std::exchange(o.ctx, nullptr)), owned(std::exchange(o.owned, nullptr)) {}
+  FzOwned(FzOwned &&o) noexcept : owned(std::exchange(o.owned, nullptr)) {}
 
-    FzOwned &operator=(FzOwned &&rhs) noexcept
-    {
-        if (this != &rhs)
-        {
-            reset();
-            ctx = std::exchange(rhs.ctx, nullptr);
-            owned = std::exchange(rhs.owned, nullptr);
+  FzOwned &operator=(FzOwned &&rhs) noexcept {
+    if (this != &rhs) {
+      reset();
+      owned = std::exchange(rhs.owned, nullptr);
+    }
+    return *this;
+  }
+
+  // The passed in ctx is a clone of [current_context] created on the rust end when either classify or extract are called.
+  template <class New, class... Args>
+  static FzOwned make(fz_context *ctx, New new_fn, Args &&...args) {
+    static_assert(
+        std::is_invocable_v<New, fz_context *, Args &&...>,
+        "constructor is not callable with these arguments - note that ctx is "
+        "injected automatically, so don't pass it yourself");
+
+    static_assert(
+        std::is_same_v<std::invoke_result_t<New, fz_context *, Args &&...>,
+                       T *>,
+        "constructor must return T* for this FzOwned specialisation");
+
+    return FzOwned{fz_call(ctx, new_fn, std::forward<Args>(args)...)};
+  }
+
+  T *get() const noexcept { return owned; }
+
+  explicit operator bool() const noexcept { return owned != nullptr; }
+
+  [[nodiscard]]
+  T *release() noexcept {
+    return std::exchange(owned, nullptr);
+  }
+
+  void reset() {
+    if (owned) {
+        if (!current_context) {
+            throw std::runtime_error("No bound context!"); 
         }
-        return *this;
+
+        Drop(current_context, owned);
     }
-
-    template <class New, class... Args>
-    static FzOwned make(fz_context *ctx, New new_fn, Args &&...args)
-    {
-        static_assert(
-            std::is_invocable_v<New, fz_context *, Args &&...>,
-            "constructor is not callable with these arguments - note that ctx is "
-            "injected automatically, so don't pass it yourself");
-
-        static_assert(
-            std::is_same_v<std::invoke_result_t<New, fz_context *, Args &&...>, T *>,
-            "constructor must return T* for this FzOwned specialisation");
-
-        return FzOwned{ctx, fz_call(ctx, new_fn, std::forward<Args>(args)...)};
-    }
-
-    T *get() const noexcept { return owned; }
-
-    explicit operator bool() const noexcept { return owned != nullptr; }
-
-    [[nodiscard]]
-    T *release() noexcept
-    {
-        ctx = nullptr;
-        return std::exchange(owned, nullptr);
-    }
-
-    void reset() noexcept
-    {
-        if (owned)
-            Drop(ctx, owned);
-        owned = nullptr;
-        ctx = nullptr;
-    }
+    owned = nullptr;
+  }
 
 private:
-    fz_context *ctx = nullptr;
-    T *owned = nullptr;
+  T *owned = nullptr;
 };
 
 using FzPage = FzOwned<fz_page, fz_drop_page>;
