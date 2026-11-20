@@ -15,3 +15,4 @@ dist/
 examples/data.txt
 data/large_test_doc_classified
 tools/colordoc/palette.hpp
+!pdf_classifier_lib/generated/

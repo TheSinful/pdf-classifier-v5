@@ -21,6 +21,7 @@ protected:
     }
     ctx = fz_new_context(NULL, NULL, FZ_STORE_UNLIMITED);
     ASSERT_NE(ctx, nullptr) << "Failed to create MuPDF context";
+    bind_current_context(ctx); // FzOwned frees through the thread's bound context
     fz_try(ctx) {
       fz_register_document_handlers(ctx);
       doc = fz_open_document(ctx, pdf_path.string().c_str());
@@ -36,6 +37,7 @@ protected:
       doc = nullptr;
     }
     if (ctx) {
+      bind_current_context(nullptr);
       fz_drop_context(ctx);
       ctx = nullptr;
     }

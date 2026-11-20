@@ -89,7 +89,7 @@ impl WorkerThread {
             // this should be later reflected in the actual definition of fz_context and fz_document.
             // And since context is declared prior to document, document should always Drop first,
             // as fz_drop_document() requires a ctx pointer.
-            let ctx = unsafe { ffi::FzContext::new(ffi::STANDARD_CTX_MEM_LIMIT) };
+            let ctx = unsafe { ffi::FzContext::new() };
             let doc = unsafe { ffi::Document::new(doc_path, &ctx) };
             let state = WorkerState { ctx: &ctx, doc };
 

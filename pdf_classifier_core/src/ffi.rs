@@ -1,9 +1,12 @@
+use crate::ffi::bridge::set_current_context;
 use crate::generated::generated_object_types::KnownObject;
 use cxx::{CxxString, UniquePtr, let_cxx_string};
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::path::PathBuf;
+use std::sync::LazyLock;
+
 
 /// 256MiB, standard for PyMuPDF and other bindings
 pub const STANDARD_CTX_MEM_LIMIT: usize = 256 << 20;
@@ -27,8 +30,10 @@ mod bridge {
         type OpaqueDoc;
         type OpaqueResult;
         type SharedData;
+        type OpaqueLocks;
 
-        fn create_new_ctx(mem_limit: usize) -> Result<UniquePtr<OpaqueCtx>>;
+        fn create_new_locks() -> Result<UniquePtr<OpaqueLocks>>;
+        fn create_new_ctx(locks: &UniquePtr<OpaqueLocks>, mem_limit: usize) -> Result<UniquePtr<OpaqueCtx>>;
         fn create_new_doc(
             o_ctx: &UniquePtr<OpaqueCtx>,
             path: &CxxString,
@@ -57,6 +62,10 @@ mod bridge {
         fn drop_ctx(o_ctx: &UniquePtr<OpaqueCtx>) -> Result<()>;
         fn drop_doc(o_ctx: &UniquePtr<OpaqueCtx>, o_doc: &UniquePtr<OpaqueDoc>) -> Result<()>;
         fn drop_result(f: &UniquePtr<OpaqueResult>) -> Result<()>;
+
+        fn clone_master_ctx(o_ctx: &UniquePtr<OpaqueCtx>) -> Result<UniquePtr<OpaqueCtx>>;
+        fn set_current_context(o_ctx: &UniquePtr<OpaqueCtx>) -> Result<()>; 
+        fn clear_current_context() -> ();
     }
 }
 
@@ -245,15 +254,70 @@ impl FailUserResult {
     }
 }
 
-pub struct FzContext(pub UniquePtr<bridge::OpaqueCtx>);
+struct Locks(pub UniquePtr<bridge::OpaqueLocks>); 
 
-impl FzContext {
+impl Locks {
+    pub unsafe fn new() -> Self {
+        Self {
+            0: bridge::create_new_locks().expect("failed to construct MuPDF locks at initialization!"),
+        }
+    }
+}
+
+
+static STORED_MASTER: LazyLock<MasterContext> = unsafe { LazyLock::new(|| MasterContext::new(STANDARD_CTX_MEM_LIMIT)) };
+static LOCKS: LazyLock<Locks> = unsafe { LazyLock::new(|| Locks::new()) }; 
+
+// SAFETY: 
+//  MasterContext is only used as a template for individually cloned worker contexts.
+unsafe impl Send for MasterContext {}
+unsafe impl Sync for MasterContext {}
+
+// SAFETY: 
+//  Locks is only used to hold ownership of mutexes on Locks.
+unsafe impl Send for Locks {}
+unsafe impl Sync for Locks {}
+
+pub struct MasterContext(pub UniquePtr<bridge::OpaqueCtx>); 
+
+impl MasterContext {
     pub unsafe fn new(mem_limit: usize) -> Self {
         Self {
-            0: bridge::create_new_ctx(mem_limit).unwrap_or_else(|e| {
+            0: bridge::create_new_ctx(&LOCKS.0, mem_limit).unwrap_or_else(|e| {
                 panic!("Failed to create context (from binding: {})", e.what())
             }),
         }
+    }
+
+}
+
+impl Drop for MasterContext {
+    fn drop(&mut self) {
+        unsafe { bridge::drop_ctx(&self.0).expect("failed to drop master-context!") }
+    }
+}
+
+pub struct FzContext(pub UniquePtr<bridge::OpaqueCtx>);
+
+impl FzContext {
+    /// Clones the master context. Clones share the master's store, so the only
+    /// memory limit is the one the master was created with.
+    pub unsafe fn new() -> Self {
+        let _self = Self {
+            0: bridge::clone_master_ctx(&STORED_MASTER.0).unwrap_or_else(|e| {
+                panic!("Failed to create context (from binding: {})", e.what())
+            }),
+        };
+
+        unsafe { bind_thread_current_context(&_self) };
+
+        return _self; 
+    }
+}
+
+impl Debug for FzContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("FzContext").field(&self.0.as_ptr()).finish()
     }
 }
 
@@ -266,6 +330,7 @@ impl Deref for FzContext {
 
 impl Drop for FzContext {
     fn drop(&mut self) {
+        bridge::clear_current_context();
         bridge::drop_ctx(&self.0).unwrap_or_else(|e| {
             panic!(
                 "Attempted to drop nullptr as fz_context ptr! ({})",
@@ -391,5 +456,14 @@ pub unsafe fn extract(
             #[cfg(test)]
             fake_rsn: None,
         })
+    }
+}
+
+/// Binds [ctx] to the current thread, which all functionality utilizing a context
+/// henceforth uses. 
+pub unsafe fn bind_thread_current_context(ctx: &FzContext) -> () { 
+    match set_current_context(&ctx.0){
+        Ok(_) => {}, 
+        Err(e) => panic!("Failed to bind context to thread!"),
     }
 }
