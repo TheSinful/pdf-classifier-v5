@@ -1,4 +1,125 @@
-# PDF Classifier v5 — AI Agent Instructions
+# CLAUDE.md
+
+Project rules come first. The architecture reference (terminology, invariants,
+how the engine works) is in the **Architecture** part at the bottom. If a change
+makes that reference wrong, say so.
+
+## Why this repo is different
+
+This project is my personal showpiece for college applications. The ideas and
+the engine are mine. AI help is limited and disclosed (see [AIUsage.md](AIUsage.md)).
+The rules below exist so the project stays honestly mine. They are not style
+preferences.
+
+**Deadline: 2026-12-01.** Goals, in priority order:
+
+1. The test document (`data/large_test_doc.pdf`, pages 44–1277 via
+   `python examples/main.py`) classifies **completely and correctly**.
+2. `tools/colordoc` builds and runs end-to-end.
+
+Prioritise work that moves one of these forward, and say so when a request doesn't.
+
+## Ownership zones
+
+| Zone | Paths | What Claude does |
+|---|---|---|
+| **Engine (mine)** | `pdf_classifier_core/src/**` except `tests/` and `test_schema/`; `pdf_classifier_macros/` | Diagnose, explain, review, lay out options. **Never write or edit implementation code here.** |
+| **Assisted** | `examples/`, `pdf_classifier_lib/`, `pdf_classifier_ffi/`, `pdf_classifier_build/` | Write code when asked. Lib is sensitive and should be generally wrote with respect to the idea of ease-of-use rather than explicit, efficent implementation. |
+| **AI-owned** | `tools/`, all test code (including `pdf_classifier_core/src/tests/`) | Write freely. Log it. |
+
+### Working in the engine zone
+
+"Don't write it" does **not** mean "be vague". Be concrete about the problem:
+cite `file:line`, trace the exact control flow, name the bug, and show the
+existing code that causes it. Then lay out **every** viable option
+("you could try X, Y or Z") with its trade-offs.
+
+**Never leave out an option because it looks like the correct answer.** Holding
+back the obvious fix to avoid "solving it for me" is wrong. I want the full
+picture, and I decide and write the code myself. Describe changes in words or
+by pointing at existing code. Don't hand me replacement code to paste in.
+
+## Settle design decisions before writing code
+
+Before writing code for any non-trivial task, list every design decision it
+needs up front: where the code lives, API and signatures, data structures,
+ownership/lifetimes, error handling, test approach, and anything that touches
+the engine's contracts. Get my answers, then implement **without** stopping to
+ask more. If something you couldn't have foreseen comes up mid-task, stop and
+ask. Don't guess.
+
+## AI log (`AILog.md`)
+
+Every time Claude writes or edits code, add an entry to [AILog.md](AILog.md) in
+the same change. Use the format in that file and keep entries brief.
+
+- Log **only code Claude wrote**: not advice, explanations or reviews, and not
+  code I wrote myself, even if we discussed it in conversation.
+- If I later rewrite Claude's code substantially, note that on the entry.
+- Don't edit the `AIUsage.md` files. They're in my voice. The log is the record.
+
+## Commands
+
+Two machines: Windows desktop (MSVC, multi-config CMake, so always pass
+`--config Release` / `-C Release`) and an Arch Linux laptop (GCC). Commands
+below are written for the Windows desktop.
+
+```powershell
+# Full pipeline: regenerates generated/ + C++ headers, builds MuPDF, user C++ and Rust, runs the classifier
+python examples/main.py                         # goal 1: test document
+python tools/colordoc/main.py                   # goal 2: colordoc (sets CLASSIFIER_BUILD_DIR itself)
+python tools/colordoc/main.py --skip-user-build # also: --build-only, --run-tests, --seed N
+
+# Rust core (links against the installed user build in CLASSIFIER_BUILD_DIR, default examples/build)
+cargo check -p pdf_classifier_core
+cargo check -p pdf_classifier_core --features no_ffi   # no front-end build needed (link step still fails)
+cargo test  -p pdf_classifier_core              # tests compile against src/test_schema/, not generated/
+
+# C++ tests (gtest)
+cmake --build examples/build --config Release --target classifier_tests
+ctest --test-dir examples/build -C Release
+cmake --build tools/colordoc/build --config Release --target colordoc_tests
+ctest --test-dir tools/colordoc/build -C Release
+cd pdf_classifier_lib; ./test.ps1; ctest --test-dir build -C Release   # standalone lib
+
+# Python front-end
+cd pdf_classifier_build; pip install -e .[dev]; pytest
+```
+
+Run builds and tests yourself to verify your work. The full `main.py` runs are
+slow, so tell me before starting one. Don't commit unless I ask.
+
+## Gotchas
+
+- **`generated/` is never edited by hand.** It's produced by the Python builder,
+  and so are the C++ headers in `<build_dir>/include/shared/`. Change the schema
+  or the serializers instead.
+- **Switching projects:** `examples/` and `tools/colordoc` each install into
+  their own build dir. `CLASSIFIER_BUILD_DIR` selects which one Rust links
+  against. A stale link shows up at runtime as
+  `couldn't find obj: '<class>' in generated func map`.
+- Fresh checkout: `cargo build` fails until a `main.py` run has generated
+  `generated/` and installed the user build.
+- `pdf_classifier_core/src/test_schema/` is **not committed**, but `main.rs`
+  loads it under `cfg(test)`. Without it, `cargo test` doesn't compile.
+- `graphify-out/` is a generated knowledge graph of the repo. Don't edit it by hand.
+- CRLF warnings from git are expected (Windows checkout). Ignore them.
+
+## Conventions
+
+- C++20. Format with clang-format (`examples/.clang-format`: left pointer
+  alignment, 125 columns). User objects subclass `ObjectWith<Capabilities...>`
+  (e.g. `ObjectWith<TextExtraction>`, see `pdf_classifier_lib/capability.hpp`)
+  and are registered with `DEFINE_OBJECT`. MuPDF resources are owned through
+  `Attached::allocate`, never raw `fz_drop_*`.
+- Rust edition 2024. Cursor moves go through `PageLock`.
+- Commit messages: one plain sentence (`Update func_map tests following refactor`).
+  Commits containing Claude-written code start with `[AI-written]` and end with
+  a `Co-Authored-By` trailer.
+
+---
+
+# Architecture
 
 ## What This Is
 
@@ -31,7 +152,7 @@ recovery mode that scans forward to the next safe structural anchor and
 backfills the gap structurally. This is linear-time recovery: no exponential
 backtracking, no per-page context snapshots.
 
-See [`docs/context.md`](../docs/context.md) for the original design rationale on
+See [`docs/context.md`](docs/context.md) for the original design rationale on
 why context reversion (snapshot-and-rollback) was rejected in favor of
 forward-anchoring deferral.
 
@@ -58,7 +179,7 @@ data/                   Test PDF + static-classifier "ground truth" export
 
 The Python `Builder` is the front-end that compiles a schema into static
 artifacts for **both** C++ and Rust, drives the native builds, then launches
-and streams from the classifier. A run of [`examples/main.py`](../examples/main.py)
+and streams from the classifier. A run of [`examples/main.py`](examples/main.py)
 does the whole thing:
 
 1. Define the schema via `ObjectFactory` (objects, hierarchy, pairing, overrides).
@@ -105,27 +226,27 @@ These are conceptual responsibilities that **must not** be merged:
 **(A) Inference layer — cheap, speculative, main-thread.**
 Guesses a page's type from context + constraints via the four-tier pipeline.
 Fast, reversible, allowed to be wrong. Lives in
-[`inferencer.rs`](../pdf_classifier_core/src/inferencer.rs),
-[`obj_list.rs`](../pdf_classifier_core/src/obj_list.rs),
-[`constraints/`](../pdf_classifier_core/src/constraints/).
+[`inferencer.rs`](pdf_classifier_core/src/inferencer.rs),
+[`obj_list.rs`](pdf_classifier_core/src/obj_list.rs),
+[`constraints/`](pdf_classifier_core/src/constraints/).
 
 **(B) Classification/extraction layer — expensive, authoritative, off-thread.**
 Validates a guess by calling user C++ over FFI. `classify()` returns
 `UserResult<Shared>` (ground truth + a payload); a successful classify
 auto-queues `extract()`, which returns `UserResult<CxxString>` (a JSON payload).
 Runs on `WorkerThread`s via tokio channels. Lives in
-[`threading/`](../pdf_classifier_core/src/threading/),
-[`ffi.rs`](../pdf_classifier_core/src/ffi.rs), and user `examples/*.cpp`.
+[`threading/`](pdf_classifier_core/src/threading/),
+[`ffi.rs`](pdf_classifier_core/src/ffi.rs), and user `examples/*.cpp`.
 
 **(C) Context layer — memory / structural state.**
 Holds `current_parent`, the decided `pages` map, `prev_parents`, and
 `guarantee_failures`. It **informs** inference; it never decides. Lives in
-[`context.rs`](../pdf_classifier_core/src/context.rs).
+[`context.rs`](pdf_classifier_core/src/context.rs).
 
 ## The Four-Tier Constraint Pipeline
 
 `Inferencer::infer(ctx, page, candidates)` filters a candidate list through an
-ordered pipeline (see [`obj_list.rs`](../pdf_classifier_core/src/obj_list.rs)):
+ordered pipeline (see [`obj_list.rs`](pdf_classifier_core/src/obj_list.rs)):
 
 ```
 Tier 1  filter_by_definitive_constraints  → if one fires, it IS the answer; stop
@@ -159,7 +280,7 @@ no vtables, no allocation, full inlining.
 ### Tier 4 — Overrides (two kinds)
 
 Both are generated by Python into
-[`generated/overrides.rs`](../pdf_classifier_core/src/generated/overrides.rs).
+[`generated/overrides.rs`](pdf_classifier_core/src/generated/overrides.rs).
 
 **`Override`** — single-page, stateless. `fn eval(&self, ctx, class, page) ->
 Option<OverrideAction>`. Registered in the `OVERRIDES` array. The only
@@ -190,7 +311,7 @@ dedicated classifier state (see below).
 ## Structural Knowledge as Lookup Tables
 
 Schema relationships are compiled into `O(1)` adjacency matrices at build time
-in [`generated/reflected_objects.rs`](../pdf_classifier_core/src/generated/reflected_objects.rs):
+in [`generated/reflected_objects.rs`](pdf_classifier_core/src/generated/reflected_objects.rs):
 
 ```rust
 pub const VALID_CHILDREN: TableMatrix   // can Y be a child of X?
@@ -216,7 +337,7 @@ discriminants (where `UNKNOWN` is 0).
 
 ## Classifier State Machine
 
-[`classifiers/mod.rs`](../pdf_classifier_core/src/classifiers/mod.rs) drives a
+[`classifiers/mod.rs`](pdf_classifier_core/src/classifiers/mod.rs) drives a
 **three-state** machine (plus a `Transition` swap sentinel):
 
 ```rust
@@ -236,7 +357,7 @@ place, schedules a transition, or exits when the cursor reaches `end_page`.
 
 ### CommittedClassifier — normal operation
 
-Per [`step()`](../pdf_classifier_core/src/classifiers/committed.rs):
+Per [`step()`](pdf_classifier_core/src/classifiers/committed.rs):
 1. `Inferencer::infer()` the current page.
 2. Consult `OVERRIDES` — may reroute via `handle_override`.
 3. Queue a `classify` job on the `ThreadPool`.
@@ -274,7 +395,7 @@ and hands control back to committed inference.
 ## Page Cursor Discipline (`PageLock`)
 
 Page advancement is enforced by a type, not a loose integer or boolean flag —
-see [`page_lock.rs`](../pdf_classifier_core/src/page_lock.rs). This exists
+see [`page_lock.rs`](pdf_classifier_core/src/page_lock.rs). This exists
 because historically the worst bugs came from advancing the cursor in the wrong
 place (double-advances, skips).
 
@@ -301,14 +422,14 @@ the anchor and advances once.
 
 ## Worker Threads & Thread Pool
 
-Each `WorkerThread` ([`threading/mod.rs`](../pdf_classifier_core/src/threading/mod.rs))
+Each `WorkerThread` ([`threading/mod.rs`](pdf_classifier_core/src/threading/mod.rs))
 owns an OS thread with its **own** isolated MuPDF `fz_context` + document
 (thread-affine — MuPDF contexts cannot cross threads). Communication is via
 tokio mpsc channels (`CHANNEL_BUFFER_SIZE = 50`) carrying `WorkerJob::Classify`
 / `WorkerJob::Extract`. Default per-context limit is 256 MiB
 (`STANDARD_CTX_MEM_LIMIT`).
 
-The `ThreadPool` ([`threading/pool.rs`](../pdf_classifier_core/src/threading/pool.rs))
+The `ThreadPool` ([`threading/pool.rs`](pdf_classifier_core/src/threading/pool.rs))
 holds `FuturesUnordered` for classify and extract futures and is `poll()`ed
 cooperatively (via `noop_waker_ref`). Two behaviors to know:
 - A **successful classify auto-queues its extraction** — the classify's `Shared`
@@ -319,7 +440,7 @@ cooperatively (via `noop_waker_ref`). Two behaviors to know:
 
 ## FFI Boundary (Rust ↔ C++)
 
-The `cxx` bridge is in [`ffi.rs`](../pdf_classifier_core/src/ffi.rs). Never
+The `cxx` bridge is in [`ffi.rs`](pdf_classifier_core/src/ffi.rs). Never
 expose raw MuPDF types across the boundary — everything is an opaque wrapper:
 `OpaqueCtx` (`fz_context*`), `OpaqueDoc` (`fz_document*`), `SharedData` (the
 classify payload forwarded to extract), `OpaqueResult` (`Result*`).
@@ -353,9 +474,9 @@ tests) without duplicate definitions. `page` is always first; both return
 
 Extraction output is fully wired end-to-end:
 `extract()` returns a JSON string → Rust `Streamer`
-([`stream.rs`](../pdf_classifier_core/src/stream.rs)) writes framed
+([`stream.rs`](pdf_classifier_core/src/stream.rs)) writes framed
 `(page, class, payload)` bytes over a TCP socket to `CLASSIFIER_OUTPUT_PORT` →
-Python's `Stream` ([`pdf_classifier_build/.../stream.py`](../pdf_classifier_build/src/pdf_classifier/stream.py))
+Python's `Stream` ([`pdf_classifier_build/.../stream.py`](pdf_classifier_build/src/pdf_classifier/stream.py))
 accepts the connection and yields `ExtractionResult`s from
 `stream_extraction_results()`. The binary **refuses to start** without
 `CLASSIFIER_OUTPUT_PORT` set, because a frontend is mandatory. `Streamer` is a
@@ -364,7 +485,7 @@ plain struct with `send_data(page, class, &[u8])`.
 ## Python DSL: Defining Document Objects
 
 Objects are document-level abstractions, built with a fluent
-`ObjectFactory`. From [`examples/main.py`](../examples/main.py):
+`ObjectFactory`. From [`examples/main.py`](examples/main.py):
 
 ```python
 factory = ObjectFactory("test.hpp")  # shared header the user code implements
@@ -443,7 +564,7 @@ A stdlib-Python-served, self-contained web UI that **replays a run purely from
 its tracing-tree log** — no changes to the classifier. It renders the page strip,
 a step-by-step stepper (inference tiers, overrides, deferral probes, backfill),
 a document tree, inference margins, state/errors/extractions, and an **error %
-tab**. See its [README](../tools/visualizer/README.md).
+tab**. See its [README](tools/visualizer/README.md).
 
 The error % tab compares a run's decisions against a per-page **ground truth** in
 `static/groundtruth.js`, generated by `build_groundtruth.py` from the static
@@ -470,9 +591,9 @@ Be aware these are not finished; verify current code before relying on them:
 
 ## AI Agent Guidance
 
-1. **Start at [`examples/main.py`](../examples/main.py)** — the schema,
+1. **Start at [`examples/main.py`](examples/main.py)** — the schema,
    overrides, and page range are all defined there.
-2. **Trust [`generated/`](../pdf_classifier_core/src/generated/) as schema
+2. **Trust [`generated/`](pdf_classifier_core/src/generated/) as schema
    truth** — it is what Rust actually compiles against at runtime.
 3. **Respect the tier order** Definitive → Hard → Soft → Overrides; never add
    scoring to hard constraints or filtering to soft ones.
