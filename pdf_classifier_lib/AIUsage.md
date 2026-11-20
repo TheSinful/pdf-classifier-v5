@@ -15,3 +15,16 @@ Therefore, I am forced to use AI to handle the following:
       somewhat timely.
 
 Although I pride this project in not being slop, this is the best use of the tool in this case.
+
+## Log
+
+### 2026-11-19 [AI-written] MuPDF binding tags + generated wrappers
+- `codegen/gen_fz_wrappers.py`: generator. Reads the MuPDF headers and `codegen/fz_tags.toml`,
+  writes `generated/fz_bindings.hpp` (FzBinding, fz_binding_of<T>) and `generated/fz_wrappers.hpp`
+  (FzWrap<T, Drop>, FzUntagged<T>, one alias per drop function). Warns, never fails, on a MuPDF
+  version change, evidence drift or new drop functions.
+- `codegen/fz_tags.toml`: tag table, 30 Context / 23 Document / 4 uncertain, 16 skipped drop functions.
+  Every entry cites file:line evidence in the MuPDF source; the generator re-checks it.
+- Tags came from a scripted reachability analysis over MuPDF's struct definitions plus manual review
+  of the void* fields it couldn't resolve. The tag rule, the FzOwned Binding parameter and Kept<T> are mine.
+- CMakeLists.txt: the two generated headers were added to the installed header set.

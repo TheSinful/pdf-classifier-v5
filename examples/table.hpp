@@ -3,7 +3,7 @@
 #include <pdf_classifier_lib/object.hpp>
 #include <pdf_classifier_lib/result.hpp>
 #include <pdf_classifier_lib/util.hpp>
-#include <pdf_classifier_lib/wrappers.hpp>
+#include <pdf_classifier_lib/generated/fz_wrappers.hpp>
 #include <memory>
 #include <mupdf/fitz.h>
 #include <shared/result.h>

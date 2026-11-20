@@ -1,5 +1,5 @@
 #include "string_utils.hpp"
-#include "wrappers.hpp"
+#include "generated/fz_wrappers.hpp"
 
 #include <algorithm>
 #include <format>

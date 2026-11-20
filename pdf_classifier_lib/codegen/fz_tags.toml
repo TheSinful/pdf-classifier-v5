@@ -1,0 +1,486 @@
+# FzBinding tag table for MuPDF types. Read by gen_fz_wrappers.py.
+#
+# Rule: Document if the struct holds fz_document*, fz_page* or pdf_document*, directly or through any
+# object it holds a reference to (including subclasses a base pointer can point at). Otherwise Context.
+# Evidence paths are relative to the MuPDF source root (examples/build/mupdf_build/_deps/mupdf-src).
+# 'contains' is checked by the generator, so drift after a MuPDF bump is reported.
+#
+# [uncertain.*] types stay untagged: using them fails to compile until someone decides and moves them.
+# [skip.*] drop functions have the standard shape but don't drop an object handle; no wrapper is made.
+
+mupdf_version = "1.26.12"
+
+[types.fz_band_writer]
+tag = "Context"
+reason = "No field, embedded struct or subclass reaches fz_document/fz_page/pdf_document. Only opaque fields are fz_output state and Tesseract handles (pdfocr subclass); none hold a document."
+evidence = [
+  { at = "include/mupdf/fitz/band-writer.h:93", contains = "struct fz_band_writer" },
+  { at = "include/mupdf/fitz/band-writer.h:100", contains = "fz_output *out;" },
+  { at = "source/fitz/output-pdfocr.c:261", contains = "void *tessapi;" },
+]
+
+[types.fz_bitmap]
+tag = "Context"
+reason = "No field, embedded struct or subclass reaches fz_document/fz_page/pdf_document. No void* fields."
+evidence = [
+  { at = "include/mupdf/fitz/bitmap.h:45", contains = "} fz_bitmap;" },
+]
+
+[types.fz_buffer]
+tag = "Context"
+reason = "No field, embedded struct or subclass reaches fz_document/fz_page/pdf_document. No void* fields."
+evidence = [
+  { at = "include/mupdf/fitz/buffer.h:47", contains = "} fz_buffer;" },
+]
+
+[types.fz_colorspace]
+tag = "Context"
+reason = "No field, embedded struct or subclass reaches fz_document/fz_page/pdf_document. Separation/DeviceN tint (void *tint) only ever holds a pdf_function, which has no document reference."
+evidence = [
+  { at = "include/mupdf/fitz/color.h:401", contains = "struct fz_colorspace" },
+  { at = "include/mupdf/fitz/color.h:425", contains = "void *tint;" },
+  { at = "source/pdf/pdf-colorspace.c:169", contains = "cs->u.separation.tint = pdf_load_function(ctx, tintobj, n, cs->u.separation.base->n);" },
+]
+
+[types.fz_compressed_buffer]
+tag = "Context"
+reason = "No field, embedded struct or subclass reaches fz_document/fz_page/pdf_document. No void* fields."
+evidence = [
+  { at = "include/mupdf/fitz/compressed-buffer.h:97", contains = "} fz_compressed_buffer;" },
+]
+
+[types.fz_default_colorspaces]
+tag = "Context"
+reason = "No field, embedded struct or subclass reaches fz_document/fz_page/pdf_document. Only void* reached is fz_colorspace tint (a pdf_function; see fz_colorspace)."
+evidence = [
+  { at = "include/mupdf/fitz/color.h:330", contains = "}  fz_default_colorspaces;" },
+]
+
+[types.fz_function]
+tag = "Context"
+reason = "No field, embedded struct or subclass reaches fz_document/fz_page/pdf_document. No void* fields."
+evidence = [
+  { at = "include/mupdf/fitz/device.h:121", contains = "struct fz_function" },
+]
+
+[types.fz_glyph]
+tag = "Context"
+reason = "No field, embedded struct or subclass reaches fz_document/fz_page/pdf_document. Only void* reached is fz_colorspace tint (a pdf_function; see fz_colorspace)."
+evidence = [
+  { at = "source/fitz/glyph-imp.h:55", contains = "struct fz_glyph" },
+]
+
+[types.fz_halftone]
+tag = "Context"
+reason = "No field, embedded struct or subclass reaches fz_document/fz_page/pdf_document. Only void* reached is fz_colorspace tint (a pdf_function; see fz_colorspace)."
+evidence = [
+  { at = "source/fitz/halftone.c:27", contains = "struct fz_halftone" },
+]
+
+[types.fz_jbig2_globals]
+tag = "Context"
+reason = "No field, embedded struct or subclass reaches fz_document/fz_page/pdf_document. No void* fields."
+evidence = [
+  { at = "source/fitz/filter-jbig2.c:33", contains = "struct fz_jbig2_globals" },
+]
+
+[types.fz_layout_block]
+tag = "Context"
+reason = "No field, embedded struct or subclass reaches fz_document/fz_page/pdf_document. No void* fields."
+evidence = [
+  { at = "include/mupdf/fitz/structured-text.h:61", contains = "} fz_layout_block;" },
+]
+
+[types.fz_outline]
+tag = "Context"
+reason = "No field, embedded struct or subclass reaches fz_document/fz_page/pdf_document. No void* fields."
+evidence = [
+  { at = "include/mupdf/fitz/outline.h:133", contains = "typedef struct fz_outline" },
+]
+
+[types.fz_output]
+tag = "Context"
+reason = "No field, embedded struct or subclass reaches fz_document/fz_page/pdf_document. void *state: every fz_new_output() caller is in source/fitz (file, buffer, encoders); none stores a document."
+evidence = [
+  { at = "include/mupdf/fitz/output.h:110", contains = "struct fz_output" },
+  { at = "include/mupdf/fitz/output.h:112", contains = "void *state;" },
+  { at = "source/fitz/output.c:355", contains = "fz_output *out = fz_new_output(ctx, 0, fz_keep_buffer(ctx, buf), buffer_write, NULL, buffer_drop);" },
+]
+
+[types.fz_path]
+tag = "Context"
+reason = "No field, embedded struct or subclass reaches fz_document/fz_page/pdf_document. No void* fields."
+evidence = [
+  { at = "source/fitz/path.c:63", contains = "struct fz_path" },
+]
+
+[types.fz_pixmap]
+tag = "Context"
+reason = "No field, embedded struct or subclass reaches fz_document/fz_page/pdf_document. Only void* reached is fz_colorspace tint (a pdf_function; see fz_colorspace)."
+evidence = [
+  { at = "include/mupdf/fitz/pixmap.h:430", contains = "struct fz_pixmap" },
+]
+
+[types.fz_pool]
+tag = "Context"
+reason = "No field, embedded struct or subclass reaches fz_document/fz_page/pdf_document. No void* fields."
+evidence = [
+  { at = "source/fitz/pool.c:37", contains = "struct fz_pool" },
+]
+
+[types.fz_separations]
+tag = "Context"
+reason = "No field, embedded struct or subclass reaches fz_document/fz_page/pdf_document. Only void* reached is fz_colorspace tint (a pdf_function; see fz_colorspace)."
+evidence = [
+  { at = "source/fitz/separation.c:36", contains = "struct fz_separations" },
+]
+
+[types.fz_shade]
+tag = "Context"
+reason = "No field, embedded struct or subclass reaches fz_document/fz_page/pdf_document. Only void* reached is fz_colorspace tint (a pdf_function; see fz_colorspace)."
+evidence = [
+  { at = "include/mupdf/fitz/shade.h:103", contains = "} fz_shade;" },
+]
+
+[types.fz_shade_color_cache]
+tag = "Context"
+reason = "No field, embedded struct or subclass reaches fz_document/fz_page/pdf_document. fz_color_converter.opaque holds the ICC link; colorspaces reach no document (see fz_colorspace)."
+evidence = [
+  { at = "source/fitz/draw-mesh.c:242", contains = "struct fz_shade_color_cache" },
+  { at = "source/fitz/color-imp.h:86", contains = "void *opaque;" },
+]
+
+[types.fz_string]
+tag = "Context"
+reason = "No field, embedded struct or subclass reaches fz_document/fz_page/pdf_document. No void* fields."
+evidence = [
+  { at = "include/mupdf/fitz/context.h:761", contains = "} fz_string;" },
+]
+
+[types.fz_stroke_state]
+tag = "Context"
+reason = "No field, embedded struct or subclass reaches fz_document/fz_page/pdf_document. No void* fields."
+evidence = [
+  { at = "include/mupdf/fitz/path.h:67", contains = "} fz_stroke_state;" },
+]
+
+[types.fz_xml]
+tag = "Context"
+reason = "No field, embedded struct or subclass reaches fz_document/fz_page/pdf_document. No void* fields."
+evidence = [
+  { at = "source/fitz/xml-imp.h:54", contains = "struct fz_xml" },
+]
+
+[types.fz_zip_writer]
+tag = "Context"
+reason = "No field, embedded struct or subclass reaches fz_document/fz_page/pdf_document. Holds only an fz_output (see fz_output)."
+evidence = [
+  { at = "source/fitz/zip.c:37", contains = "struct fz_zip_writer" },
+  { at = "source/fitz/zip.c:39", contains = "fz_output *output;" },
+]
+
+[types.pdf_cmap]
+tag = "Context"
+reason = "No field, embedded struct or subclass reaches fz_document/fz_page/pdf_document. No void* fields."
+evidence = [
+  { at = "include/mupdf/pdf/cmap.h:48", contains = "typedef struct pdf_cmap" },
+]
+
+[types.pdf_function]
+tag = "Context"
+reason = "No field, embedded struct or subclass reaches fz_document/fz_page/pdf_document. No void* fields."
+evidence = [
+  { at = "source/pdf/pdf-function.c:62", contains = "struct pdf_function" },
+]
+
+[types.pdf_locked_fields]
+tag = "Context"
+reason = "No field, embedded struct or subclass reaches fz_document/fz_page/pdf_document. No void* fields."
+evidence = [
+  { at = "source/pdf/pdf-xref.c:4044", contains = "struct pdf_locked_fields" },
+]
+
+[types.pdf_mark_bits]
+tag = "Context"
+reason = "No field, embedded struct or subclass reaches fz_document/fz_page/pdf_document. No void* fields."
+evidence = [
+  { at = "include/mupdf/pdf/object.h:116", contains = "} pdf_mark_bits;" },
+]
+
+[types.pdf_object_labels]
+tag = "Context"
+reason = "No field, embedded struct or subclass reaches fz_document/fz_page/pdf_document. No void* fields."
+evidence = [
+  { at = "source/pdf/pdf-label.c:40", contains = "struct pdf_object_labels" },
+]
+
+[types.pdf_pkcs7_signer]
+tag = "Context"
+reason = "No field, embedded struct or subclass reaches fz_document/fz_page/pdf_document. No void* fields."
+evidence = [
+  { at = "include/mupdf/pdf/form.h:229", contains = "struct pdf_pkcs7_signer" },
+]
+
+[types.pdf_pkcs7_verifier]
+tag = "Context"
+reason = "No field, embedded struct or subclass reaches fz_document/fz_page/pdf_document. No void* fields."
+evidence = [
+  { at = "include/mupdf/pdf/form.h:245", contains = "struct pdf_pkcs7_verifier" },
+]
+
+[types.fz_device]
+tag = "Document"
+reason = "Polymorphic: the pdf_device subclass holds a pdf_document (draw/bbox devices don't)."
+evidence = [
+  { at = "source/pdf/pdf-device.c:87", contains = "pdf_document *doc;" },
+]
+
+[types.fz_display_list]
+tag = "Document"
+reason = "The node byte stream keeps fz_text (fz_keep_text), whose fonts hold t3doc. Not visible as a struct field."
+evidence = [
+  { at = "source/fitz/list-device.c:854", contains = "fz_text *cloned_text = fz_keep_text(ctx, text);" },
+  { at = "include/mupdf/fitz/text.h:70", contains = "fz_font *font;" },
+  { at = "include/mupdf/fitz/font.h:792", contains = "void *t3doc; /* a pdf_document for the callback */" },
+  { at = "source/pdf/pdf-type3.c:180", contains = "font->t3doc = doc;" },
+]
+
+[types.fz_document]
+tag = "Document"
+reason = "Is the document."
+evidence = [
+  { at = "include/mupdf/fitz/document.h:1052", contains = "struct fz_document" },
+]
+
+[types.fz_document_writer]
+tag = "Document"
+reason = "Polymorphic: the pdf_writer subclass holds a pdf_document."
+evidence = [
+  { at = "source/pdf/pdf-write.c:2911", contains = "pdf_document *pdf;" },
+]
+
+[types.fz_font]
+tag = "Document"
+reason = "Type3 fonts keep their pdf_document (void *t3doc) and resources for lazy glyph rendering."
+evidence = [
+  { at = "include/mupdf/fitz/font.h:792", contains = "void *t3doc; /* a pdf_document for the callback */" },
+  { at = "source/pdf/pdf-type3.c:180", contains = "font->t3doc = doc;" },
+]
+
+[types.fz_link]
+tag = "Document"
+reason = "Every link loaded from a PDF page is a pdf_link, which holds its pdf_page."
+evidence = [
+  { at = "source/pdf/pdf-annot-imp.h:49", contains = "pdf_page *page;" },
+]
+
+[types.fz_outline_iterator]
+tag = "Document"
+reason = "Holds a document/page pointer directly."
+evidence = [
+  { at = "include/mupdf/fitz/outline.h:251", contains = "fz_document *doc;" },
+]
+
+[types.fz_page]
+tag = "Document"
+reason = "Is the page (holds fz_document *doc)."
+evidence = [
+  { at = "include/mupdf/fitz/document.h:1016", contains = "struct fz_page" },
+]
+
+[types.fz_stext_page]
+tag = "Document"
+alias = "FzSTextPage"  # matches the existing name in wrappers.hpp
+reason = "Every char keeps its fz_font (fz_keep_font in the stext device); fz_font holds t3doc."
+evidence = [
+  { at = "include/mupdf/fitz/structured-text.h:434", contains = "fz_font *font;" },
+  { at = "source/fitz/stext-device.c:393", contains = "ch->font = fz_keep_font(ctx, font);" },
+  { at = "include/mupdf/fitz/font.h:792", contains = "void *t3doc; /* a pdf_document for the callback */" },
+  { at = "source/pdf/pdf-type3.c:180", contains = "font->t3doc = doc;" },
+]
+
+[types.fz_story]
+tag = "Document"
+reason = "Its HTML font set holds fz_font pointers (see fz_font: t3doc)."
+evidence = [
+  { at = "source/html/html-imp.h:393", contains = "fz_html_font_set *font_set;" },
+  { at = "source/html/html-imp.h:61", contains = "fz_font *fonts[12]; /* Times, Helvetica, Courier in R,I,B,BI */" },
+  { at = "include/mupdf/fitz/font.h:792", contains = "void *t3doc; /* a pdf_document for the callback */" },
+  { at = "source/pdf/pdf-type3.c:180", contains = "font->t3doc = doc;" },
+]
+
+[types.fz_text]
+tag = "Document"
+reason = "Each span keeps an fz_font (see fz_font: t3doc)."
+evidence = [
+  { at = "include/mupdf/fitz/text.h:70", contains = "fz_font *font;" },
+  { at = "include/mupdf/fitz/font.h:792", contains = "void *t3doc; /* a pdf_document for the callback */" },
+  { at = "source/pdf/pdf-type3.c:180", contains = "font->t3doc = doc;" },
+]
+
+[types.pdf_annot]
+tag = "Document"
+reason = "Holds a document/page pointer directly."
+evidence = [
+  { at = "source/pdf/pdf-annot-imp.h:32", contains = "pdf_page *page;" },
+]
+
+[types.pdf_crypt]
+tag = "Document"
+reason = "Holds pdf_obj *id (an array from the trailer), which holds its pdf_document."
+evidence = [
+  { at = "source/pdf/pdf-crypt.c:45", contains = "pdf_obj *id;" },
+  { at = "source/pdf/pdf-object.c:98", contains = "pdf_document *doc;" },
+]
+
+[types.pdf_document]
+tag = "Document"
+reason = "Is the document (subclass of fz_document)."
+evidence = [
+  { at = "include/mupdf/pdf/document.h:419", contains = "struct pdf_document" },
+]
+
+[types.pdf_font_desc]
+tag = "Document"
+reason = "Holds an fz_font (see fz_font: t3doc)."
+evidence = [
+  { at = "include/mupdf/pdf/font.h:66", contains = "fz_font *font;" },
+  { at = "include/mupdf/fitz/font.h:792", contains = "void *t3doc; /* a pdf_document for the callback */" },
+  { at = "source/pdf/pdf-type3.c:180", contains = "font->t3doc = doc;" },
+]
+
+[types.pdf_graft_map]
+tag = "Document"
+reason = "Holds a document/page pointer directly."
+evidence = [
+  { at = "source/pdf/pdf-graft.c:32", contains = "pdf_document *src;" },
+]
+
+[types.pdf_journal]
+tag = "Document"
+reason = "Journal fragments hold pdf_obj (arrays/dicts hold their pdf_document)."
+evidence = [
+  { at = "source/pdf/pdf-object.c:159", contains = "pdf_journal_entry *head;" },
+  { at = "source/pdf/pdf-object.c:148", contains = "pdf_journal_fragment *tail;" },
+  { at = "source/pdf/pdf-object.c:131", contains = "pdf_obj *inactive;" },
+  { at = "source/pdf/pdf-object.c:98", contains = "pdf_document *doc;" },
+]
+
+[types.pdf_js]
+tag = "Document"
+reason = "Holds a document/page pointer directly."
+evidence = [
+  { at = "source/pdf/pdf-js.c:36", contains = "pdf_document *doc;" },
+]
+
+[types.pdf_obj]
+tag = "Document"
+reason = "Arrays, dicts and indirect refs (pdf_obj_array/_dict/_ref) hold their pdf_document."
+evidence = [
+  { at = "source/pdf/pdf-object.c:98", contains = "pdf_document *doc;" },
+]
+
+[types.pdf_page]
+tag = "Document"
+reason = "Is the page (subclass of fz_page)."
+evidence = [
+  { at = "include/mupdf/pdf/page.h:304", contains = "struct pdf_page" },
+]
+
+[types.pdf_pattern]
+tag = "Document"
+reason = "Holds a document/page pointer directly."
+evidence = [
+  { at = "include/mupdf/pdf/resource.h:123", contains = "pdf_document *document;" },
+]
+
+[types.pdf_processor]
+tag = "Document"
+reason = "Polymorphic: run/sanitize/color processors hold a pdf_document."
+evidence = [
+  { at = "source/pdf/pdf-op-color.c:81", contains = "pdf_document *doc;" },
+]
+
+[types.pdf_xref]
+tag = "Document"
+reason = "Holds pdf_obj *trailer (a dict, which holds its pdf_document)."
+evidence = [
+  { at = "include/mupdf/pdf/xref.h:89", contains = "pdf_obj *trailer;" },
+  { at = "source/pdf/pdf-object.c:98", contains = "pdf_document *doc;" },
+]
+
+[uncertain.fz_archive]
+reason = "Same problem as fz_stream: holds an fz_stream *file, and document handlers (cbz, epub, ...) share their archive. The epub 'encrypted' subclass also keeps an fz_tree of void* values."
+evidence = [
+  { at = "include/mupdf/fitz/archive.h:425", contains = "fz_stream *file;" },
+  { at = "source/html/epub-doc.c:104", contains = "fz_tree *info;" },
+]
+
+[uncertain.fz_hash_table]
+reason = "Generic container: entries are void *val, so binding depends entirely on what the caller stores."
+evidence = [
+  { at = "source/fitz/hash.c:39", contains = "void *val;" },
+]
+
+[uncertain.fz_image]
+reason = "Base and the compressed/pixmap subclasses are Context (PDF images copy their data into an fz_compressed_buffer). But the fz_display_list_image subclass holds an fz_display_list, which is Document-bound (fonts -> t3doc)."
+evidence = [
+  { at = "source/fitz/image.c:47", contains = "fz_image super;" },
+  { at = "source/fitz/image.c:1563", contains = "fz_display_list *list;" },
+]
+
+[uncertain.fz_stream]
+reason = "By the rule: Context (no stream state in source/ holds a document). But streams opened from a PDF chain the document's own fz_stream doc->file (fz_keep_stream), so reading one on another worker races with that worker's document."
+evidence = [
+  { at = "include/mupdf/fitz/stream.h:323", contains = "void *state;" },
+  { at = "source/fitz/filter-basic.c:77", contains = "state->chain = fz_keep_stream(ctx, chain);" },
+  { at = "source/pdf/pdf-stream.c:457", contains = "return pdf_open_raw_filter(ctx, doc->file, doc, x->obj, num, &orig_num, &orig_gen, x->stm_ofs);" },
+]
+
+[skip.fz_drop_colorspace_imp]
+reason = "Store-internal destructor (takes fz_storable*); not an object handle."
+
+[skip.fz_drop_jbig2_globals_imp]
+reason = "Store-internal destructor (takes fz_storable*); not an object handle."
+
+[skip.fz_drop_image_imp]
+reason = "Store-internal destructor (takes fz_storable*); not an object handle."
+
+[skip.fz_drop_shade_imp]
+reason = "Store-internal destructor (takes fz_storable*); not an object handle."
+
+[skip.pdf_drop_cmap_imp]
+reason = "Store-internal destructor (takes fz_storable*); not an object handle."
+
+[skip.fz_drop_storable]
+reason = "Store base-class refcount helper; real objects use their typed drop."
+
+[skip.fz_drop_key_storable]
+reason = "Store base-class refcount helper; real objects use their typed drop."
+
+[skip.fz_drop_key_storable_key]
+reason = "Drops a store-key reference, not the object."
+
+[skip.fz_drop_image_store_key]
+reason = "Drops an fz_image store-key reference, not the image (fz_drop_image does that)."
+
+[skip.fz_drop_image_base]
+reason = "fz_image subclass-implementation helper, not the public drop."
+
+[skip.fz_drop_drawn_tiles_for_document]
+reason = "Evicts cached tiles for a document; does not drop the document."
+
+[skip.pdf_drop_page_tree]
+reason = "Frees a document's page-tree cache; does not drop the document."
+
+[skip.pdf_drop_page_tree_internal]
+reason = "Frees a document's page-tree cache; does not drop the document."
+
+[skip.pdf_drop_ocg]
+reason = "Frees a document's OCG state; does not drop the document."
+
+[skip.pdf_drop_resource_tables]
+reason = "Frees a document's resource caches; does not drop the document."
+
+[skip.pdf_drop_local_xref_and_resources]
+reason = "Frees a document's local xref; does not drop the document."

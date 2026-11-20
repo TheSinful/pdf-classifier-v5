@@ -4,7 +4,7 @@
 #include "result.hpp"
 #include "string_utils.hpp"
 #include "util.hpp"
-#include "wrappers.hpp"
+#include "generated/fz_wrappers.hpp"
 #include <concepts>
 #include <memory>
 #include <shared/result.h>

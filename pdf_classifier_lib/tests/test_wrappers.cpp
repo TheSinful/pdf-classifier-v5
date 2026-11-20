@@ -1,4 +1,4 @@
-#include "../wrappers.hpp"
+#include "../generated/fz_wrappers.hpp"
 
 #include <gtest/gtest.h>
 

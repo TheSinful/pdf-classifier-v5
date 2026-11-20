@@ -1,7 +1,7 @@
 #pragma once
 
 #include "./string_utils.hpp"
-#include "./wrappers.hpp"
+#include "./generated/fz_wrappers.hpp"
 #include <memory>
 #include <mupdf/fitz.h>
 #include <vector>
